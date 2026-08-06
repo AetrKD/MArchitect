@@ -30,3 +30,28 @@ export function translate(language, text) {
   const match = pairs.find(([source]) => source === trimmed);
   return match ? text.replace(trimmed, match[1]) : text;
 }
+
+/** Key-based UI copy for new and migrated components. */
+export const MESSAGES = {
+  ko: {
+    common: { cancel: "취소", confirm: "확인", delete: "삭제", start: "시작", stop: "정지", forceStop: "강제 종료", clearAll: "전체 삭제", logOut: "로그아웃" },
+    sidebar: { home: "홈", instances: "인스턴스 목록", serverSettings: "서버 설정", users: "사용자 관리", java: "Java 관리", language: "언어", lightMode: "라이트 모드", admin: "관리자", user: "사용자", menuToggle: "메뉴 열기 또는 닫기" },
+    status: { running: "실행 중", stopped: "정지됨", starting: "시작 중", stopping: "정지 중" },
+    dashboard: { title: "서버 대시보드", description: "시스템 사용량을 실시간으로 확인하세요.", loading: "시스템 사용량을 불러오는 중입니다.", interval: "2초 간격 · 컨테이너 기준", disk: "디스크 사용량", storage: "인스턴스 저장소", traffic: "네트워크 트래픽", trafficHelp: "파랑: 다운로드 · 회색: 업로드", resources: "인스턴스 리소스", memory: "메모리", backgroundTasks: "백그라운드 작업", acknowledgeAll: "전체 확인", taskHint: "작업을 누르면 목록에서 사라집니다.", queued: "대기 중", completed: "완료", failed: "실패", inProgress: "진행 중" },
+    instances: { title: "인스턴스 목록", description: "마인크래프트 서버 인스턴스를 관리하세요.", createTitle: "+ 인스턴스 생성", createDescription: "새 마인크래프트 서버를 추가합니다.", createBadge: "새 서버", create: "생성", noJar: "JAR 파일 정보 없음" },
+    runtime: { title: "Java 런타임 관리", description: "Temurin Linux x64 JDK를 프로젝트 JAVA 폴더에 설치합니다." },
+  },
+  en: {
+    common: { cancel: "Cancel", confirm: "Confirm", delete: "Delete", start: "Start", stop: "Stop", forceStop: "Force stop", clearAll: "Clear all", logOut: "Log out" },
+    sidebar: { home: "Home", instances: "Instances", serverSettings: "Server settings", users: "Users", java: "Java runtimes", language: "Language", lightMode: "Light mode", admin: "Admin", user: "User", menuToggle: "Open or close menu" },
+    status: { running: "Running", stopped: "Stopped", starting: "Starting", stopping: "Stopping" },
+    dashboard: { title: "Server dashboard", description: "Monitor system usage in real time.", loading: "Loading system metrics...", interval: "Every 2 seconds · container scope", disk: "Disk usage", storage: "Instance storage", traffic: "Network traffic", trafficHelp: "Blue: download · gray: upload", resources: "Instance resources", memory: "Memory", backgroundTasks: "Background tasks", acknowledgeAll: "Acknowledge all", taskHint: "Select a task to dismiss it.", queued: "Queued", completed: "Completed", failed: "Failed", inProgress: "In progress" },
+    instances: { title: "Instances", description: "Manage Minecraft server instances.", createTitle: "+ Create instance", createDescription: "Add a new Minecraft server.", createBadge: "New", create: "Create", noJar: "No JAR file information" },
+    runtime: { title: "Java runtime management", description: "Install Temurin Linux x64 JDKs in the project JAVA folder." },
+  },
+};
+
+/** Return the key-based UI copy bundle for the selected language. */
+export function getMessages(language) {
+  return MESSAGES[language] ?? MESSAGES.ko;
+}

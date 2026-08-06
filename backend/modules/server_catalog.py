@@ -3,11 +3,12 @@ import asyncio
 import xml.etree.ElementTree as element_tree
 
 import httpx
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from modules.downloads import USER_AGENT
+from modules.auth import require_admin
 
-router = APIRouter(prefix="/server-catalog", tags=["server-catalog"])
+router = APIRouter(prefix="/server-catalog", tags=["server-catalog"], dependencies=[Depends(require_admin)])
 
 PAPER_BASE_URL = "https://fill.papermc.io/v3/projects/paper"
 FABRIC_META_URL = "https://meta.fabricmc.net/v2/versions"

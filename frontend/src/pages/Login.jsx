@@ -1,36 +1,41 @@
 import { useState } from "react";
+import { getMessages } from "../i18n/translations.js";
 
-function Login({ onLogin }) {
-  // 한 개의 접근 코드로 데모 역할을 선택하는 로그인 화면입니다.
+/** Authenticate one access code and expose preferences before sign-in. */
+function Login({ language, theme, onLanguageChange, onThemeToggle, onLogin }) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { sidebar } = getMessages(language);
+  const isEnglish = language === "en";
 
   async function handleSubmit(event) {
-    // 입력한 접근 코드를 상위 인증 처리에 전달하고 실패하면 오류를 표시합니다.
     event.preventDefault();
     setIsSubmitting(true);
     setError("");
     if (await onLogin(code)) return;
-    setError("유효하지 않은 접근 코드입니다.");
+    setError(isEnglish ? "Invalid access code." : "유효하지 않은 접근 코드입니다.");
     setIsSubmitting(false);
   }
 
-  return (
-    <main className="login-page">
-      <section className="login-card">
-        <p className="eyebrow">MARCHITECT</p>
-        <h1>서버 관리 로그인</h1>
-        <p className="login-description">부여받은 접근 코드 하나를 입력해 계속하세요.</p>
-        <form onSubmit={handleSubmit}>
-          <label className="code-label" htmlFor="access-code">접근 코드</label>
-          <input id="access-code" className="code-input" value={code} onChange={(event) => { setCode(event.target.value); setError(""); }} placeholder="접근 코드 입력" autoComplete="off" autoFocus />
-          {error && <p className="login-error">{error}</p>}
-          <button className="login-button" type="submit" disabled={isSubmitting}>{isSubmitting ? "확인 중..." : "입장하기"}</button>
-        </form>
-      </section>
-    </main>
-  );
+  return <main className="login-page">
+    <section className="login-card">
+      <div className="login-preferences">
+        <label htmlFor="login-language">{sidebar.language}</label>
+        <select id="login-language" value={language} onChange={(event) => onLanguageChange(event.target.value)}><option value="ko">한국어</option><option value="en">English</option></select>
+        <button type="button" onClick={onThemeToggle}>{theme === "dark" ? `☀ ${sidebar.lightMode}` : "◐ Dark mode"}</button>
+      </div>
+      <p className="eyebrow">MARCHITECT</p>
+      <h1>{isEnglish ? "Server management login" : "서버 관리 로그인"}</h1>
+      <p className="login-description">{isEnglish ? "Enter the access code you received to continue." : "부여받은 접근 코드 하나를 입력해 계속하세요."}</p>
+      <form onSubmit={handleSubmit}>
+        <label className="code-label" htmlFor="access-code">{isEnglish ? "Access code" : "접근 코드"}</label>
+        <input id="access-code" className="code-input" value={code} onChange={(event) => { setCode(event.target.value); setError(""); }} placeholder={isEnglish ? "Enter access code" : "접근 코드 입력"} autoComplete="off" autoFocus />
+        {error && <p className="login-error">{error}</p>}
+        <button className="login-button" type="submit" disabled={isSubmitting}>{isSubmitting ? (isEnglish ? "Checking..." : "확인 중...") : (isEnglish ? "Sign in" : "입장하기")}</button>
+      </form>
+    </section>
+  </main>;
 }
 
 export default Login;

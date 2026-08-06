@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import api from "../lib/api.js";
+import { getMessages } from "../i18n/translations.js";
 
-function AdminRuntime({ onLogout, onNotify }) {
+function AdminRuntime({ language, onLogout, onNotify, onConfirm }) {
   // Java 목록, 선택 버전, 현재 설치 작업 상태를 관리합니다.
   const [available, setAvailable] = useState([]);
   const [installed, setInstalled] = useState([]);
   const [selectedVersion, setSelectedVersion] = useState("");
   const [activeTask, setActiveTask] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { runtime: runtimeText } = getMessages(language);
 
   const loadRuntimes = useCallback(async () => {
     // 설치 가능한 Temurin 버전과 현재 감지된 런타임을 함께 갱신합니다.
@@ -68,7 +70,7 @@ function AdminRuntime({ onLogout, onNotify }) {
 
   async function deleteRuntime(runtime) {
     // 앱이 관리하는 Java 폴더만 확인 후 삭제하고 목록을 갱신합니다.
-    if (!window.confirm(`${runtime.name} 런타임을 삭제할까요?`)) return;
+    if (!await onConfirm({ title: "Java 런타임 삭제", titleEn: "Delete Java runtime", message: `${runtime.name} 런타임을 삭제할까요?`, messageEn: `Delete ${runtime.name}?`, confirmLabel: "삭제", confirmLabelEn: "Delete" })) return;
     setActiveTask({ id: runtime.managed_directory, deleting: true });
     try {
       await api.delete(`/admin/java-runtimes/${encodeURIComponent(runtime.managed_directory)}`);
@@ -89,7 +91,7 @@ function AdminRuntime({ onLogout, onNotify }) {
 
   return <main className="dashboard">
     <RuntimeTopBar onLogout={onLogout} />
-    <section className="detail-card"><p className="eyebrow">ADMIN</p><h1>Java 런타임 관리</h1><p>Temurin Linux x64 JDK를 프로젝트 JAVA 폴더에 설치합니다.</p></section>
+    <section className="detail-card"><p className="eyebrow">ADMIN</p><h1>{runtimeText.title}</h1><p>{runtimeText.description}</p></section>
     <InstalledRuntimes runtimes={installed} isBusy={isBusy} activeTask={activeTask} onDelete={deleteRuntime} />
     <section className="management-section"><h2>Temurin Linux x64 다운로드</h2><div className="runtime-buttons"><select aria-label="설치할 Java 버전" value={selectedVersion} onChange={(event) => setSelectedVersion(event.target.value)} disabled={isBusy || available.length === 0}>{available.map((version) => <option key={version} value={version}>Java {version}{installedVersions.has(String(version)) ? " (설치됨)" : ""}</option>)}</select><button className="create-button" type="button" disabled={!selectedVersion || isBusy || isInstalled} onClick={installRuntime}>{isInstalled ? "이미 설치됨" : isBusy ? "설치 중..." : "설치"}</button></div></section>
   </main>;

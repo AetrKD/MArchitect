@@ -30,11 +30,15 @@ def _collect_output(instance_path: Path, instance_id: str, process: subprocess.P
         write_instance(instance_path, instance)
 
 
-def _process_uses_instance_directory(process_id: int, instance_path: Path) -> bool:
+def _is_instance_server_process(process_id: int, instance_path: Path) -> bool:
     """리눅스 프로세스의 작업 경로가 이 인스턴스 폴더인지 확인합니다."""
     try:
-        return Path(f"/proc/{process_id}/cwd").resolve() == instance_path.resolve()
-    except (FileNotFoundError, OSError):
+        if Path(f"/proc/{process_id}/cwd").resolve() != instance_path.resolve():
+            return False
+        command = Path(f"/proc/{process_id}/cmdline").read_bytes().split(b"\0")
+        executable = Path(command[0].decode("utf-8", errors="ignore")).name.lower() if command else ""
+        return executable.startswith("java")
+    except (FileNotFoundError, OSError, UnicodeError):
         return False
 
 
@@ -47,18 +51,35 @@ def find_process_id(instance_id: str) -> int | None:
     instance_path = get_instance_path(instance_id)
     instance = read_instance(instance_path)
     saved_process_id = instance.get("process_pid")
-    if isinstance(saved_process_id, int) and _process_uses_instance_directory(saved_process_id, instance_path):
+    if isinstance(saved_process_id, int) and _is_instance_server_process(saved_process_id, instance_path):
         return saved_process_id
 
     # Uvicorn reload clears this module's memory, but the Java child can keep
     # running. Its working directory uniquely identifies the instance folder.
     for process_path in Path("/proc").iterdir():
-        if process_path.name.isdigit() and _process_uses_instance_directory(int(process_path.name), instance_path):
+        if process_path.name.isdigit() and _is_instance_server_process(int(process_path.name), instance_path):
             process_id = int(process_path.name)
             instance["process_pid"] = process_id
             write_instance(instance_path, instance)
             return process_id
     return None
+
+
+def synchronize_status(instance_path: Path) -> dict:
+    """Synchronize saved state with the actual Java server process."""
+    instance = read_instance(instance_path)
+    process_id = find_process_id(instance["id"])
+    if process_id is None:
+        if instance.get("status") != "stopped" or "process_pid" in instance:
+            instance["status"] = "stopped"
+            instance.pop("process_pid", None)
+            write_instance(instance_path, instance)
+        return instance
+    if instance.get("status") not in {"starting", "stopping", "running"}:
+        instance["status"] = "running"
+        instance["process_pid"] = process_id
+        write_instance(instance_path, instance)
+    return instance
 
 
 def start(instance_path: Path) -> dict:

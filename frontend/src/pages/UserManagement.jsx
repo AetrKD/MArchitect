@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import api from "../lib/api.js";
 
-function UserManagement({ onLogout, onNotify }) {
+function UserManagement({ onLogout, onNotify, onConfirm }) {
   // 발급된 사용자 코드 목록, 방금 발급한 원본 코드와 로딩 상태를 관리합니다.
   const [codes, setCodes] = useState([]);
   const [issuedCode, setIssuedCode] = useState("");
@@ -43,7 +43,7 @@ function UserManagement({ onLogout, onNotify }) {
 
   async function deleteCode(code) {
     // 확인 후 선택한 사용자 접근 코드를 삭제하고 화면 목록에서도 제거합니다.
-    if (!window.confirm(`${code.hint} 코드를 삭제할까요?`)) return;
+    if (!await onConfirm({ title: "사용자 코드 삭제", titleEn: "Delete user code", message: `${code.hint} 코드를 삭제할까요?`, messageEn: `Delete the ${code.hint} code?`, confirmLabel: "삭제", confirmLabelEn: "Delete" })) return;
     try {
       await api.delete(`/auth/user-codes/${code.id}`);
       setCodes((current) => current.filter((item) => item.id !== code.id));

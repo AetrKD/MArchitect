@@ -66,11 +66,24 @@ async def initialize_auth_database() -> None:
         await database.commit()
 
 
-async def require_admin(x_marchitect_token: str | None = Header(default=None)) -> str:
+def session_role(token: str | None) -> str | None:
+    """Return the signed-in role for a session token, if it is still valid."""
+    return SESSIONS.get(token) if token else None
+
+
+async def require_authenticated(x_marchitect_token: str | None = Header(default=None)) -> str:
+    """Allow only requests carrying an active administrator or user session."""
+    role = session_role(x_marchitect_token)
+    if role not in {"admin", "user"}:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="로그인이 필요합니다.")
+    return role
+
+
+async def require_admin(role: str = Depends(require_authenticated)) -> str:
     """관리자 세션 토큰만 관리자 전용 코드 관리 API에 통과시킵니다."""
-    if not x_marchitect_token or SESSIONS.get(x_marchitect_token) != "admin":
+    if role != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="관리자 권한이 필요합니다.")
-    return x_marchitect_token
+    return role
 
 
 @router.post("/login")

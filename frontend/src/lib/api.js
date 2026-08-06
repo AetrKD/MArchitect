@@ -6,10 +6,12 @@ const API_BASE_URL = "/api";
 
 // FastAPI 요청에 사용하는 공통 HTTP 클라이언트입니다.
 const api = axios.create({ baseURL: API_BASE_URL });
+let sessionToken = null;
 
 export function setAuthToken(token) {
   // 로그인 세션 토큰을 모든 백엔드 요청의 헤더에 적용하거나 제거합니다.
-  if (token) api.defaults.headers.common["X-MArchitect-Token"] = token;
+  sessionToken = token || null;
+  if (sessionToken) api.defaults.headers.common["X-MArchitect-Token"] = sessionToken;
   else delete api.defaults.headers.common["X-MArchitect-Token"];
 }
 
@@ -21,7 +23,9 @@ export function apiFileUrl(path) {
 export function apiWebSocketUrl(path) {
   // Keep WebSocket traffic on the browser's current host and protocol.
   const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${protocol}//${window.location.host}${API_BASE_URL}${path}`;
+  const separator = path.includes("?") ? "&" : "?";
+  const tokenQuery = sessionToken ? `${separator}token=${encodeURIComponent(sessionToken)}` : "";
+  return `${protocol}//${window.location.host}${API_BASE_URL}${path}${tokenQuery}`;
 }
 
 export default api;

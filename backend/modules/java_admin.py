@@ -6,14 +6,15 @@ import tempfile
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from modules.downloads import USER_AGENT, download_file
 from modules.java_runtimes import detect_java_runtimes
 from modules.task_store import start_task, update_progress
+from modules.auth import require_admin
 
-router = APIRouter(prefix="/admin/java-runtimes", tags=["admin-java-runtimes"])
+router = APIRouter(prefix="/admin/java-runtimes", tags=["admin-java-runtimes"], dependencies=[Depends(require_admin)])
 JAVA_INSTALL_DIR = Path(os.getenv("MARCHITECT_JAVA_INSTALL_DIR", "/java"))
 ADOPTIUM_API_URL = "https://api.adoptium.net/v3"
 

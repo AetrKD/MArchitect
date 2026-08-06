@@ -1,5 +1,6 @@
 """FastAPI application entry point and router registration."""
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
 from modules.instances import router as instances_router
@@ -8,7 +9,7 @@ from modules.java_admin import router as java_admin_router
 from modules.server_catalog import router as server_catalog_router
 from modules.task_store import router as tasks_router
 from modules.system_metrics import router as system_metrics_router
-from modules.auth import initialize_auth_database, router as auth_router
+from modules.auth import initialize_auth_database, router as auth_router, session_role
 
 app = FastAPI()
 
@@ -19,6 +20,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def require_api_session(request: Request, call_next):
+    """Require a valid session for every API route except login and health checks."""
+    if request.method == "OPTIONS" or request.url.path in {"/", "/auth/login", "/docs", "/openapi.json"}:
+        return await call_next(request)
+    role = session_role(request.headers.get("X-MArchitect-Token"))
+    if role not in {"admin", "user"}:
+        return JSONResponse(status_code=401, content={"detail": "로그인이 필요합니다."})
+    request.state.role = role
+    return await call_next(request)
 
 app.include_router(instances_router)
 app.include_router(java_runtimes_router)

@@ -9,6 +9,7 @@ import ServerSettings from "./pages/ServerSettings.jsx";
 import UserManagement from "./pages/UserManagement.jsx";
 import AppSidebar from "./components/AppSidebar.jsx";
 import ToastNotifications from "./components/ToastNotifications.jsx";
+import ConfirmDialog from "./components/ConfirmDialog.jsx";
 import { translate } from "./i18n/translations.js";
 import "./App.css";
 
@@ -16,7 +17,9 @@ function App() {
   // 로그인 역할, 화면 경로, 인스턴스·작업 데이터와 전역 알림을 관리합니다.
   const [instances, setInstances] = useState([]);
   const [tasks, setTasks] = useState([]);
+  const [dismissedTaskIds, setDismissedTaskIds] = useState(() => new Set());
   const [toasts, setToasts] = useState([]);
+  const [confirmation, setConfirmation] = useState(null);
   const [role, setRole] = useState(null);
   const [path, setPath] = useState(window.location.pathname);
   const [language, setLanguage] = useState(() => window.localStorage.getItem("marchitect-language") || "ko");
@@ -31,6 +34,21 @@ function App() {
     setToasts((current) => [...current.slice(-3), { id, message, type }]);
     window.setTimeout(() => setToasts((current) => current.filter((toast) => toast.id !== id)), 4000);
   }, []);
+
+  const requestConfirmation = useCallback((options) => new Promise((resolve) => setConfirmation({ ...options, resolve })), []);
+
+  function resolveConfirmation(accepted) {
+    confirmation?.resolve(accepted);
+    setConfirmation(null);
+  }
+
+  function dismissTask(taskId) {
+    setDismissedTaskIds((current) => new Set([...current, taskId]));
+  }
+
+  function dismissAllTasks() {
+    setDismissedTaskIds((current) => new Set([...current, ...tasks.map((task) => task.id)]));
+  }
 
   useEffect(() => {
     // 선택한 언어와 테마를 브라우저에 저장하고 문서 전체에 테마를 적용합니다.
@@ -148,8 +166,8 @@ function App() {
 
   function withAppChrome(page) {
     // 로그인한 역할에 맞는 사이드바와 전역 토스트를 모든 화면에 함께 표시합니다.
-    const content = <div className="admin-shell"><AppSidebar path={path} role={role} language={language} theme={theme} onLanguageChange={setLanguage} onThemeToggle={() => setTheme((current) => current === "dark" ? "light" : "dark")} onNavigate={navigate} /><div className="admin-page">{page}</div></div>;
-    return <>{content}<ToastNotifications toasts={toasts} /></>;
+    const content = <div className="admin-shell"><AppSidebar path={path} role={role} language={language} theme={theme} onLanguageChange={setLanguage} onThemeToggle={() => setTheme((current) => current === "dark" ? "light" : "dark")} onNavigate={navigate} onLogout={logout} /><div className="admin-page">{page}</div></div>;
+    return <>{content}<ToastNotifications toasts={toasts} /><ConfirmDialog confirmation={confirmation} language={language} onResolve={resolveConfirmation} /></>;
   }
 
   async function createInstance({ name, sourceType, file, minecraftVersion, loaderVersion, neoforgeVersion }) {
@@ -190,13 +208,13 @@ function App() {
     }
   }
 
-  if (!role) return <Login onLogin={login} />;
+  if (!role) return <Login language={language} theme={theme} onLanguageChange={setLanguage} onThemeToggle={() => setTheme((current) => current === "dark" ? "light" : "dark")} onLogin={login} />;
   if (path === "/instances/new" && role === "admin") return withAppChrome(<InstanceCreate onCreate={createInstance} onCancel={() => navigate("/instances")} onLogout={logout} />);
-  if (path === "/admin" && role === "admin") return withAppChrome(<AdminRuntime onLogout={logout} onNotify={notify} />);
+  if (path === "/admin" && role === "admin") return withAppChrome(<AdminRuntime language={language} onLogout={logout} onNotify={notify} onConfirm={requestConfirmation} />);
   if (path === "/server-settings" && role === "admin") return withAppChrome(<ServerSettings onLogout={logout} onNotify={notify} />);
-  if (path === "/users" && role === "admin") return withAppChrome(<UserManagement onLogout={logout} onNotify={notify} />);
-  if (selectedInstance) return withAppChrome(<InstanceDetail instance={selectedInstance} isAdmin={role === "admin"} onBack={() => navigate("/instances")} onToggleServer={toggleServer} onDelete={deleteInstance} onNotify={notify} onLogout={logout} />);
-  return withAppChrome(<InstanceList instances={instances} isAdmin={role === "admin"} language={language} onCreate={() => navigate("/instances/new")} onOpenAdmin={() => navigate("/admin")} onSelect={(id) => navigate(`/instances/${id}`)} onToggleServer={toggleServer} onLogout={logout} tasks={tasks} showDashboard={path === "/dashboard"} />);
+  if (path === "/users" && role === "admin") return withAppChrome(<UserManagement onLogout={logout} onNotify={notify} onConfirm={requestConfirmation} />);
+  if (selectedInstance) return withAppChrome(<InstanceDetail instance={selectedInstance} isAdmin={role === "admin"} language={language} onBack={() => navigate("/instances")} onToggleServer={toggleServer} onDelete={deleteInstance} onNotify={notify} onLogout={logout} onConfirm={requestConfirmation} />);
+  return withAppChrome(<InstanceList instances={instances} isAdmin={role === "admin"} language={language} onCreate={() => navigate("/instances/new")} onOpenAdmin={() => navigate("/admin")} onSelect={(id) => navigate(`/instances/${id}`)} onToggleServer={toggleServer} onLogout={logout} tasks={tasks.filter((task) => !dismissedTaskIds.has(task.id))} onDismissTask={dismissTask} onDismissAllTasks={dismissAllTasks} showDashboard={path === "/dashboard"} />);
 }
 
 export default App;

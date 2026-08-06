@@ -1,4 +1,5 @@
 """Instance creation, configuration, file access and lifecycle API endpoints."""
+import asyncio
 import io
 import mimetypes
 import os
@@ -14,7 +15,7 @@ from typing import Literal
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -33,7 +34,8 @@ from modules.instance_store import (
 from modules.downloads import download_remote_file
 from modules.server_catalog import fabric_download, neoforge_download_url, paper_download_url
 from modules.task_store import start_task, update_progress
-from modules.server_process import force_stop, process_metrics, recent_lines, send_command, start as start_process, stop as stop_process
+from modules.server_process import force_stop, process_metrics, recent_lines, send_command, start as start_process, stop as stop_process, synchronize_status
+from modules.auth import require_admin, session_role
 
 router = APIRouter(prefix="/instances", tags=["instances"])
 MAX_JAR_SIZE_BYTES = 200 * 1024 * 1024
@@ -158,7 +160,7 @@ async def install_neoforge_server(instance_path: Path, instance: dict, installer
         update_progress(task_record, 90, "NeoForge 실행 구성을 저장하는 중입니다.", indeterminate=False)
 
 
-@router.get("/players/{player_name}")
+@router.get("/players/{player_name}", dependencies=[Depends(require_admin)])
 async def find_player(player_name: str):
     """Mojang 프로필 API로 마인크래프트 플레이어 이름을 검증합니다."""
     try:
@@ -203,7 +205,7 @@ async def list_instances():
         if not instance_path.is_dir() or not metadata_path.is_file():
             continue
         try:
-            instance = read_instance(instance_path)
+            instance = synchronize_status(instance_path)
             instance["resource_metrics"] = process_metrics(instance["id"])
             instances.append(instance)
         except (OSError, ValueError):
@@ -211,7 +213,7 @@ async def list_instances():
     return sorted(instances, key=lambda instance: instance.get("created_at", ""), reverse=True)
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_admin)])
 async def create_instance(
     name: str = Form(..., min_length=1, max_length=80),
     jar_file: UploadFile = File(...),
@@ -263,7 +265,7 @@ async def create_instance(
         await jar_file.close()
 
 
-@router.post("/download", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/download", status_code=status.HTTP_202_ACCEPTED, dependencies=[Depends(require_admin)])
 async def queue_catalog_instance(request: CatalogInstanceRequest):
     """페이지를 닫아도 계속되도록 카탈로그 서버 다운로드를 작업으로 등록합니다."""
     task = start_task(
@@ -273,7 +275,7 @@ async def queue_catalog_instance(request: CatalogInstanceRequest):
     return task
 
 
-@router.post("/download-now", status_code=status.HTTP_201_CREATED, include_in_schema=False)
+@router.post("/download-now", status_code=status.HTTP_201_CREATED, include_in_schema=False, dependencies=[Depends(require_admin)])
 async def create_catalog_instance(request: CatalogInstanceRequest, task_record: dict | None = None):
     """선택한 공식 서버 파일을 내려받아 인스턴스 폴더를 생성합니다."""
     clean_name = request.name.strip()
@@ -352,7 +354,7 @@ async def get_server_icon(instance_id: str):
     return FileResponse(icon_path, media_type="image/png")
 
 
-@router.post("/{instance_id}/server-icon")
+@router.post("/{instance_id}/server-icon", dependencies=[Depends(require_admin)])
 async def upload_server_icon(instance_id: str, icon_file: UploadFile = File(...)):
     """64x64 PNG server-icon.png 파일인지 검증한 뒤 저장합니다."""
     if Path(icon_file.filename or "").suffix.lower() != ".png":
@@ -376,7 +378,7 @@ async def upload_server_icon(instance_id: str, icon_file: UploadFile = File(...)
     return instance
 
 
-@router.delete("/{instance_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{instance_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
 async def delete_instance(instance_id: str):
     """정지된 인스턴스와 폴더 안의 모든 서버 파일을 삭제합니다."""
     instance_path = get_instance_path(instance_id)
@@ -396,7 +398,7 @@ async def get_runtime_settings(instance_id: str):
     return {key: instance.get(key, "" if key in {"jvm_args", "custom_command"} else None) for key in ("java_path", "memory_mb", "jvm_args", "launch_mode", "custom_command", "launch_target", "launch_kind")}
 
 
-@router.put("/{instance_id}/name")
+@router.put("/{instance_id}/name", dependencies=[Depends(require_admin)])
 async def update_instance_name(instance_id: str, update: NameUpdate):
     """실제 폴더 ID는 유지한 채 인스턴스 표시 이름만 변경합니다."""
     instance_path = get_instance_path(instance_id)
@@ -408,7 +410,7 @@ async def update_instance_name(instance_id: str, update: NameUpdate):
     return instance
 
 
-@router.put("/{instance_id}/runtime")
+@router.put("/{instance_id}/runtime", dependencies=[Depends(require_admin)])
 async def update_runtime_settings(instance_id: str, update: RuntimeUpdate):
     """JVM 인수를 저장하고 인스턴스 시작 스크립트를 다시 생성합니다."""
     instance_path = get_instance_path(instance_id)
@@ -440,7 +442,7 @@ async def get_server_properties(instance_id: str):
     return {"content": read_text_file(instance_path, "server.properties"), "exists": (instance_path / "server.properties").is_file()}
 
 
-@router.put("/{instance_id}/server-properties")
+@router.put("/{instance_id}/server-properties", dependencies=[Depends(require_admin)])
 async def update_server_properties(instance_id: str, update: TextUpdate):
     """이미 있는 server.properties 파일 내용을 저장합니다."""
     instance_path = get_instance_path(instance_id)
@@ -455,7 +457,7 @@ async def get_eula(instance_id: str):
     return {"content": read_text_file(instance_path, "eula.txt"), "exists": (instance_path / "eula.txt").is_file()}
 
 
-@router.put("/{instance_id}/eula")
+@router.put("/{instance_id}/eula", dependencies=[Depends(require_admin)])
 async def update_eula(instance_id: str, update: TextUpdate):
     """이미 있는 eula.txt 파일 내용을 저장합니다."""
     instance_path = get_instance_path(instance_id)
@@ -471,7 +473,7 @@ async def get_whitelist(instance_id: str):
     return {"names": __import__("json").loads(read_text_file(instance_path, "whitelist.json")) if path.is_file() else [], "exists": path.is_file()}
 
 
-@router.put("/{instance_id}/whitelist")
+@router.put("/{instance_id}/whitelist", dependencies=[Depends(require_admin)])
 async def update_whitelist(instance_id: str, update: NameListUpdate):
     """전달받은 플레이어 이름 목록을 화이트리스트 파일에 저장합니다."""
     instance_path = get_instance_path(instance_id)
@@ -490,7 +492,7 @@ async def get_blacklist(instance_id: str):
     return {"names": __import__("json").loads(read_text_file(instance_path, "banned-players.json")) if path.is_file() else [], "exists": path.is_file()}
 
 
-@router.put("/{instance_id}/blacklist")
+@router.put("/{instance_id}/blacklist", dependencies=[Depends(require_admin)])
 async def update_blacklist(instance_id: str, update: NameListUpdate):
     """전달받은 플레이어 이름 목록을 블랙리스트 파일에 저장합니다."""
     instance_path = get_instance_path(instance_id)
@@ -533,7 +535,7 @@ async def download_storage_file(instance_id: str, area: StorageArea, file_path: 
     return FileResponse(target_path, filename=target_path.name)
 
 
-@router.post("/{instance_id}/storage/{area}/upload")
+@router.post("/{instance_id}/storage/{area}/upload", dependencies=[Depends(require_admin)])
 async def upload_storage_files(
     instance_id: str,
     area: StorageArea,
@@ -565,7 +567,7 @@ async def upload_storage_files(
     return {"uploaded": saved}
 
 
-@router.post("/{instance_id}/storage/world/upload-directory")
+@router.post("/{instance_id}/storage/world/upload-directory", dependencies=[Depends(require_admin)])
 async def upload_world_directory(instance_id: str, files: list[UploadFile] = File(...), path: str = ""):
     """브라우저에서 선택한 world 폴더 구조를 하위 경로까지 유지해 업로드합니다."""
     root = storage_root(get_instance_path(instance_id), "world")
@@ -600,7 +602,7 @@ async def upload_world_directory(instance_id: str, files: list[UploadFile] = Fil
     return {"uploaded": saved}
 
 
-@router.delete("/{instance_id}/storage/{area}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{instance_id}/storage/{area}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
 async def clear_storage_directory(instance_id: str, area: StorageArea):
     """최상위 월드·모드·플러그인 폴더는 남기고 내부만 비웁니다."""
     if area == "logs":
@@ -615,7 +617,7 @@ async def clear_storage_directory(instance_id: str, area: StorageArea):
             entry.unlink()
 
 
-@router.delete("/{instance_id}/storage/{area}/{file_path:path}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{instance_id}/storage/{area}/{file_path:path}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
 async def delete_storage_entry(instance_id: str, area: StorageArea, file_path: str):
     """허용된 탐색기 폴더 안에서만 선택한 파일 또는 폴더를 삭제합니다."""
     target_path = safe_file_path(get_instance_path(instance_id), area, file_path)
@@ -660,16 +662,20 @@ async def stop_instance(instance_id: str):
     return stop_process(get_instance_path(instance_id))
 
 
-@router.post("/{instance_id}/force-stop")
+@router.post("/{instance_id}/force-stop", dependencies=[Depends(require_admin)])
 async def force_stop_instance(instance_id: str):
     """응답하지 않는 인스턴스 서버 프로세스를 즉시 강제 종료합니다."""
     return force_stop(get_instance_path(instance_id))
 
 
 @router.websocket("/{instance_id}/console")
-async def console_socket(websocket: WebSocket, instance_id: str):
+async def console_socket(websocket: WebSocket, instance_id: str, token: str | None = None):
     """WebSocket으로 실시간 로그를 보내고 콘솔 입력을 서버로 전달합니다."""
     get_instance_path(instance_id); await websocket.accept()
+    role = session_role(token)
+    if role not in {"admin", "user"}:
+        await websocket.close(code=1008)
+        return
     sent = 0
     try:
         while True:
@@ -682,7 +688,7 @@ async def console_socket(websocket: WebSocket, instance_id: str):
             sent = len(lines)
             try:
                 command = await asyncio.wait_for(websocket.receive_text(), timeout=0.5)
-                await websocket.send_json({"type": "command", "accepted": send_command(instance_id, command)})
+                await websocket.send_json({"type": "command", "accepted": role == "admin" and send_command(instance_id, command)})
             except asyncio.TimeoutError:
                 continue
     except WebSocketDisconnect:

@@ -26,7 +26,7 @@ function withoutMemoryJvmArgs(value) {
   return value.replace(/(^|\s)-Xm[sx]\S+/g, "$1").replace(/\s+/g, " ").trim();
 }
 
-function InstanceDetail({ instance, isAdmin, onBack, onToggleServer, onDelete, onNotify, onLogout }) {
+function InstanceDetail({ instance, isAdmin, language, onBack, onToggleServer, onDelete, onNotify, onLogout, onConfirm }) {
   // 선택한 인스턴스의 설정, 파일 목록과 현재 탭 상태를 관리합니다.
   const [activeTab, setActiveTab] = useState("overview");
   const [jvmArgs, setJvmArgs] = useState("");
@@ -54,6 +54,8 @@ function InstanceDetail({ instance, isAdmin, onBack, onToggleServer, onDelete, o
   const [availableFiles, setAvailableFiles] = useState({ properties: false, eula: false, whitelist: false, blacklist: false });
   const [extensions, setExtensions] = useState({ mods: { exists: false }, plugins: { exists: false }, config: { exists: false } });
   const isRunning = instance.status === "running";
+  const isEnglish = language === "en";
+  const statusLabel = { running: "실행 중", stopped: "정지됨", starting: "시작 중", stopping: "정지 중" }[instance.status] ?? "정지됨";
   const javaVersions = [...new Set(javaRuntimes.map((runtime) => String(runtime.major_version)))];
   const javaDistributions = [...new Set(javaRuntimes.filter((runtime) => String(runtime.major_version) === javaVersion).map((runtime) => runtime.distribution || "OpenJDK"))];
   // 기본 모드에서 저장될 run.sh의 실제 실행 명령을 미리 보여줍니다.
@@ -165,7 +167,7 @@ function InstanceDetail({ instance, isAdmin, onBack, onToggleServer, onDelete, o
 
   async function forceStopServer() {
     // 정상 종료가 불가능할 때만 서버 프로세스를 강제로 종료합니다.
-    if (!window.confirm("서버를 강제 종료할까요? 저장되지 않은 데이터가 손상될 수 있습니다.")) return;
+    if (!await onConfirm({ title: "서버 강제 종료", titleEn: "Force stop server", message: "서버를 강제 종료할까요? 저장되지 않은 데이터가 손상될 수 있습니다.", messageEn: "Force stop the server? Unsaved data may be damaged.", confirmLabel: "강제 종료", confirmLabelEn: "Force stop" })) return;
     await api.post(`/instances/${instance.id}/force-stop`);
     onNotify("서버를 강제 종료했습니다.");
   }
@@ -189,7 +191,7 @@ function InstanceDetail({ instance, isAdmin, onBack, onToggleServer, onDelete, o
 
   async function deleteThisInstance() {
     // 확인을 받은 뒤 인스턴스 전체 삭제를 상위 화면에 요청하고 목록으로 돌아갑니다.
-    if (!window.confirm(`"${instance.name}" 인스턴스와 내부 서버 파일을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) return;
+    if (!await onConfirm({ title: "서버 삭제", titleEn: "Delete server", message: `"${instance.name}" 인스턴스와 내부 서버 파일을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.`, messageEn: `Delete "${instance.name}" and all of its server files? This cannot be undone.`, confirmLabel: "삭제", confirmLabelEn: "Delete" })) return;
     if (await onDelete(instance.id)) onBack();
   }
 
@@ -202,7 +204,7 @@ function InstanceDetail({ instance, isAdmin, onBack, onToggleServer, onDelete, o
       <section className="detail-card">
         <div className="detail-heading">
           <div>
-            <span className={`status ${instance.status}`}>{isRunning ? "실행 중" : "정지됨"}</span>
+            <span className={`status ${instance.status}`}>{statusLabel}</span>
             <h1>{instance.name}</h1>
             <p>{instance.jar_filename}</p>
           </div>
@@ -217,7 +219,7 @@ function InstanceDetail({ instance, isAdmin, onBack, onToggleServer, onDelete, o
         <section className="management-section">
           <h2>실행 설정</h2>
           <div className="command-mode-toggle" role="group" aria-label="명령어 타입"><button className={launchMode === "basic" ? "active" : ""} type="button" disabled={!isAdmin} onClick={() => setLaunchMode("basic")}>기본</button><button className={launchMode === "custom" ? "active" : ""} type="button" disabled={!isAdmin} onClick={() => setLaunchMode("custom")}>커스텀</button></div>
-          {launchMode === "custom" ? <><label htmlFor="custom-command">전체 시작 명령어</label><textarea id="custom-command" value={customCommand} onChange={(event) => setCustomCommand(event.target.value)} rows="4" disabled={!isAdmin} placeholder="예: /java/.../bin/java -Xmx2G -jar paper.jar nogui" /></> : <><label htmlFor="java-version">Java 버전</label><select id="java-version" value={javaVersion} onChange={(event) => selectJavaVersion(event.target.value)} disabled={!isAdmin}>{javaVersions.map((version) => <option key={version} value={version}>Java {version}</option>)}</select><label htmlFor="java-distribution">Java 종류</label><select id="java-distribution" value={javaDistribution} onChange={(event) => selectJavaDistribution(event.target.value)} disabled={!isAdmin}>{javaDistributions.map((distribution) => <option key={distribution} value={distribution}>{distribution}</option>)}</select><label htmlFor="memory">메모리: {memoryMb} MB (최대 {maxMemoryMb} MB)</label><input id="memory" type="range" min="256" max={maxMemoryMb} step="256" value={Math.min(memoryMb, maxMemoryMb)} onChange={(event) => setMemoryMb(Number(event.target.value))} disabled={!isAdmin} /><label htmlFor="jvm-args">추가 JVM 인수</label><input id="jvm-args" value={jvmArgs} onChange={(event) => setJvmArgs(withoutMemoryJvmArgs(event.target.value))} placeholder="예: -Dfile.encoding=UTF-8" disabled={!isAdmin} /><label htmlFor="launch-target">실행 파일 경로</label><input id="launch-target" value={launchTarget} onChange={(event) => setLaunchTarget(event.target.value)} placeholder={launchKind === "argfile" ? "libraries/.../unix_args.txt" : "server.jar"} disabled={!isAdmin} /></>}
+          {launchMode === "custom" ? <><label htmlFor="custom-command">전체 시작 명령어</label><textarea id="custom-command" value={customCommand} onChange={(event) => setCustomCommand(event.target.value)} rows="4" disabled={!isAdmin} placeholder={isEnglish ? "e.g. /java/.../bin/java -Xmx2G -jar paper.jar nogui" : "예: /java/.../bin/java -Xmx2G -jar paper.jar nogui"} /></> : <><label htmlFor="java-version">Java 버전</label><select id="java-version" value={javaVersion} onChange={(event) => selectJavaVersion(event.target.value)} disabled={!isAdmin}>{javaVersions.map((version) => <option key={version} value={version}>Java {version}</option>)}</select><label htmlFor="java-distribution">Java 종류</label><select id="java-distribution" value={javaDistribution} onChange={(event) => selectJavaDistribution(event.target.value)} disabled={!isAdmin}>{javaDistributions.map((distribution) => <option key={distribution} value={distribution}>{distribution}</option>)}</select><label htmlFor="memory">{isEnglish ? `Memory: ${memoryMb} MB (max ${maxMemoryMb} MB)` : `메모리: ${memoryMb} MB (최대 ${maxMemoryMb} MB)`}</label><input id="memory" type="range" min="256" max={maxMemoryMb} step="256" value={Math.min(memoryMb, maxMemoryMb)} onChange={(event) => setMemoryMb(Number(event.target.value))} disabled={!isAdmin} /><label htmlFor="jvm-args">추가 JVM 인수</label><input id="jvm-args" value={jvmArgs} onChange={(event) => setJvmArgs(withoutMemoryJvmArgs(event.target.value))} placeholder={isEnglish ? "e.g. -Dfile.encoding=UTF-8" : "예: -Dfile.encoding=UTF-8"} disabled={!isAdmin} /><label htmlFor="launch-target">실행 파일 경로</label><input id="launch-target" value={launchTarget} onChange={(event) => setLaunchTarget(event.target.value)} placeholder={launchKind === "argfile" ? "libraries/.../unix_args.txt" : "server.jar"} disabled={!isAdmin} /></>}
           {launchMode === "basic" && <><label>최종 시작 명령어</label><code className="command-preview">{previewCommand}</code></>}
           {isAdmin && <button className="create-button" type="button" onClick={() => save("runtime", { java_path: javaPath, memory_mb: memoryMb, jvm_args: jvmArgs, launch_mode: launchMode, custom_command: customCommand, launch_target: launchTarget }, "실행 설정을 저장했습니다.")}>저장</button>}
         </section>
@@ -227,7 +229,7 @@ function InstanceDetail({ instance, isAdmin, onBack, onToggleServer, onDelete, o
 
       {activeTab === "instance-settings" && <>
         <section className="management-section"><h2>서버 이름</h2><input value={instanceName} onChange={(event) => setInstanceName(event.target.value)} disabled={!isAdmin} />{isAdmin && <button className="create-button" type="button" onClick={() => save("name", { name: instanceName }, "서버 이름을 저장했습니다.")}>저장</button>}</section>
-        <section className="management-section"><h2>서버 아이콘</h2><p className="section-description">64 × 64 픽셀 PNG 파일을 <code>server-icon.png</code>로 저장합니다.</p><div className="server-icon-upload">{iconVersion ? <img src={`${apiFileUrl(`/instances/${instance.id}/server-icon`)}?v=${encodeURIComponent(iconVersion)}`} alt="서버 아이콘 미리보기" /> : <span className="server-icon stopped">◆</span>}<input ref={iconInput} className="visually-hidden" type="file" accept="image/png,.png" onChange={uploadServerIcon} />{isAdmin && <button className="create-button" type="button" onClick={() => iconInput.current?.click()}>server-icon.png 업로드</button>}</div></section>
+        <section className="management-section"><h2>서버 아이콘</h2><p className="section-description">64 × 64 픽셀 PNG 파일을 <code>server-icon.png</code>로 저장합니다.</p><div className="server-icon-upload">{iconVersion ? <img src={`${apiFileUrl(`/instances/${instance.id}/server-icon`)}?v=${encodeURIComponent(iconVersion)}`} alt="서버 아이콘 미리보기" /> : <span className="server-icon stopped">◆</span>}<input ref={iconInput} className="visually-hidden" type="file" accept="image/png,.png" onChange={uploadServerIcon} />{isAdmin && <button className="create-button" type="button" onClick={() => iconInput.current?.click()}>{isEnglish ? "Upload server-icon.png" : "server-icon.png 업로드"}</button>}</div></section>
         <section className="management-section danger-zone"><h2>서버 삭제</h2><p className="section-description">인스턴스와 월드, 모드, 플러그인 등 내부의 모든 파일을 삭제합니다.</p>{isAdmin && <button className="delete-button" type="button" onClick={deleteThisInstance}>서버 삭제</button>}</section>
       </>}
 
@@ -238,9 +240,9 @@ function InstanceDetail({ instance, isAdmin, onBack, onToggleServer, onDelete, o
         </section>
       )}
 
-      {activeTab === "logs" && <FileBrowser instanceId={instance.id} area="logs" title="로그 파일" isAdmin={isAdmin} />}
-      {activeTab === "world" && <FileBrowser instanceId={instance.id} area="world" title="월드 파일" isAdmin={isAdmin} clearable directoryUpload beforeUpload={<a className="create-button" href={apiFileUrl(`/instances/${instance.id}/world/download`)}>world 폴더 ZIP 다운로드</a>} />}
-      {["mods", "plugins", "config"].includes(activeTab) && <FileBrowser instanceId={instance.id} area={activeTab} title={activeTab === "mods" ? "모드" : activeTab === "plugins" ? "플러그인" : "Config"} isAdmin={isAdmin} clearable />}
+      {activeTab === "logs" && <FileBrowser instanceId={instance.id} area="logs" title={isEnglish ? "Log files" : "로그 파일"} isAdmin={isAdmin} onConfirm={onConfirm} />}
+      {activeTab === "world" && <FileBrowser instanceId={instance.id} area="world" title={isEnglish ? "World files" : "월드 파일"} isAdmin={isAdmin} onConfirm={onConfirm} clearable directoryUpload beforeUpload={<a className="create-button" href={apiFileUrl(`/instances/${instance.id}/world/download`)}>{isEnglish ? "Download world ZIP" : "world 폴더 ZIP 다운로드"}</a>} />}
+      {["mods", "plugins", "config"].includes(activeTab) && <FileBrowser instanceId={instance.id} area={activeTab} title={activeTab === "mods" ? isEnglish ? "Mods" : "모드" : activeTab === "plugins" ? isEnglish ? "Plugins" : "플러그인" : "Config"} isAdmin={isAdmin} onConfirm={onConfirm} clearable />}
 
       {isAdmin && <nav className="detail-nav" aria-label="인스턴스 상세 메뉴">
         {[...NAV_ITEMS, ...(extensions.mods.exists ? [["mods", "모드"]] : []), ...(extensions.plugins.exists ? [["plugins", "플러그인"]] : []), ...(extensions.config.exists ? [["config", "Config"]] : [])].map(([id, label]) => <button className={activeTab === id ? "active" : ""} type="button" key={id} onClick={() => setActiveTab(id)}>{label}</button>)}
@@ -276,7 +278,7 @@ function ConfigUnavailable() {
   return <p className="empty-message">서버를 한 번 시작하면 이 파일이 생성됩니다.</p>;
 }
 
-function FileBrowser({ instanceId, area, title, isAdmin, beforeUpload, clearable = false, directoryUpload = false }) {
+function FileBrowser({ instanceId, area, title, isAdmin, onConfirm, beforeUpload, clearable = false, directoryUpload = false }) {
   // 월드·모드·플러그인·로그 폴더를 같은 방식으로 탐색하고 관리합니다.
   const [currentPath, setCurrentPath] = useState("");
   const [entries, setEntries] = useState([]);
@@ -325,7 +327,7 @@ function FileBrowser({ instanceId, area, title, isAdmin, beforeUpload, clearable
 
   async function deleteEntry(entry) {
     // 확인을 받은 뒤 선택 파일 또는 폴더를 삭제하고 현재 목록을 갱신합니다.
-    if (!window.confirm(`${entry.type === "directory" ? "폴더와 내부 파일을 모두" : "파일을"} 삭제할까요?`)) return;
+    if (!await onConfirm({ title: "파일 삭제", titleEn: "Delete item", message: `${entry.type === "directory" ? "폴더와 내부 파일을 모두" : "파일을"} 삭제할까요?`, messageEn: entry.type === "directory" ? "Delete this folder and all files inside it?" : "Delete this file?", confirmLabel: "삭제", confirmLabelEn: "Delete" })) return;
     try {
       await api.delete(`/instances/${instanceId}/storage/${area}/${entry.path.split("/").map(encodeURIComponent).join("/")}`);
       await loadEntries();
@@ -336,7 +338,7 @@ function FileBrowser({ instanceId, area, title, isAdmin, beforeUpload, clearable
 
   async function clearDirectory() {
     // 관리 대상 최상위 폴더의 모든 내용을 삭제하고 목록을 처음 경로로 되돌립니다.
-    if (!window.confirm(`${title} 폴더 안의 모든 파일과 하위 폴더를 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) return;
+    if (!await onConfirm({ title: "폴더 비우기", titleEn: "Clear folder", message: `${title} 폴더 안의 모든 파일과 하위 폴더를 삭제할까요? 이 작업은 되돌릴 수 없습니다.`, messageEn: `Delete every file and subfolder in ${title}? This cannot be undone.`, confirmLabel: "전체 삭제", confirmLabelEn: "Clear all" })) return;
     try {
       await api.delete(`/instances/${instanceId}/storage/${area}`);
       setCurrentPath("");
