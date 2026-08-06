@@ -1,5 +1,6 @@
 # MArchitect
 <img width="800" height="408" alt="created-gif" src="https://github.com/user-attachments/assets/2b240789-9bd2-4d9e-a0e1-440dd9bad566" />
+
 도커 기반 마인크래프트 서버 제어 웹 애플리케이션
 
 ## 상세
