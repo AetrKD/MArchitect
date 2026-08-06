@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+    restart: unless-stopped
+    volumes:
+      # Keep instances, worlds, logs, and the SQLite database outside images.
+      - ./data:/data
+      # Keep downloaded Java runtimes between image updates.
+      - ./backend/JAVA:/java
+    environment:
+      MARCHITECT_INITIAL_ADMIN_CODE: ${MARCHITECT_INITIAL_ADMIN_CODE:?Copy .env.example to .env and set an administrator code.}
+      MARCHITECT_INITIAL_USER_CODE: ${MARCHITECT_INITIAL_USER_CODE:-}
+      MARCHITECT_JAVA_ROOTS: /java
+      MARCHITECT_JAVA_INSTALL_DIR: /java
+      MARCHITECT_DEFAULT_JAVA_PATH: /java/21/bin/java
+      MARCHITECT_INSTANCE_DIR: /data/instances
+      PYTHONDONTWRITEBYTECODE: "1"
+    ports:
+      # Allocate every Minecraft instance a unique port in this range.
+      - "${MARCHITECT_MINECRAFT_PORT_RANGE:-25565-25665}:${MARCHITECT_MINECRAFT_PORT_RANGE:-25565-25665}"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+    restart: unless-stopped
+    ports:
+      - "${MARCHITECT_WEB_PORT:-5173}:80"
+    depends_on:
+      - backend

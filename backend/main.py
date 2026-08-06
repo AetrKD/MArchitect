@@ -27,7 +27,12 @@ async def require_api_session(request: Request, call_next):
     """Require a valid session for every API route except login and health checks."""
     if request.method == "OPTIONS" or request.url.path in {"/", "/auth/login", "/docs", "/openapi.json"}:
         return await call_next(request)
-    role = session_role(request.headers.get("X-MArchitect-Token"))
+    # 이미지와 파일 다운로드는 브라우저가 사용자 정의 헤더를 붙일 수 없으므로,
+    # 읽기 전용 GET 요청에 한해 URL 토큰도 허용합니다.
+    token = request.headers.get("X-MArchitect-Token")
+    if request.method == "GET":
+        token = token or request.query_params.get("token")
+    role = session_role(token)
     if role not in {"admin", "user"}:
         return JSONResponse(status_code=401, content={"detail": "로그인이 필요합니다."})
     request.state.role = role

@@ -17,7 +17,11 @@ export function setAuthToken(token) {
 
 /** 서버가 제공하는 파일을 내려받을 때 사용할 전체 URL을 만듭니다. */
 export function apiFileUrl(path) {
-  return `${API_BASE_URL}${path}`;
+  // img, a 다운로드 요청은 Axios 헤더를 사용할 수 없으므로 세션 토큰을 URL에 덧붙입니다.
+  // 백엔드는 GET 요청에서만 이 토큰을 허용합니다.
+  const separator = path.includes("?") ? "&" : "?";
+  const tokenQuery = sessionToken ? `${separator}token=${encodeURIComponent(sessionToken)}` : "";
+  return `${API_BASE_URL}${path}${tokenQuery}`;
 }
 
 export function apiWebSocketUrl(path) {
