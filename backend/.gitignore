@@ -1,0 +1,6 @@
+JAVA/*
+!JAVA/.gitkeep
+.venv/
+.idea/
+__pycache__/
+*.py[cod]

@@ -1,0 +1,59 @@
+import { useCallback, useEffect, useState } from "react";
+import api from "../lib/api.js";
+
+function UserManagement({ onLogout, onNotify }) {
+  // 발급된 사용자 코드 목록, 방금 발급한 원본 코드와 로딩 상태를 관리합니다.
+  const [codes, setCodes] = useState([]);
+  const [issuedCode, setIssuedCode] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isIssuing, setIsIssuing] = useState(false);
+
+  const loadCodes = useCallback(async () => {
+    // 관리자가 삭제할 수 있도록 마스킹된 사용자 코드 목록을 불러옵니다.
+    setIsLoading(true);
+    try {
+      const response = await api.get("/auth/user-codes");
+      setCodes(response.data);
+    } catch (error) {
+      onNotify(error.response?.data?.detail ?? "사용자 코드 목록을 불러오지 못했습니다.", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [onNotify]);
+
+  useEffect(() => {
+    // 화면에 들어오면 최신 사용자 코드 목록을 표시합니다.
+    loadCodes();
+  }, [loadCodes]);
+
+  async function issueCode() {
+    // 새 사용자 접근 코드를 발급하고 원본은 관리자에게 한 번만 표시합니다.
+    setIsIssuing(true);
+    try {
+      const response = await api.post("/auth/user-codes");
+      setIssuedCode(response.data.code);
+      setCodes((current) => [response.data, ...current]);
+      onNotify("새 사용자 코드를 발급했습니다.");
+    } catch (error) {
+      onNotify(error.response?.data?.detail ?? "사용자 코드를 발급하지 못했습니다.", "error");
+    } finally {
+      setIsIssuing(false);
+    }
+  }
+
+  async function deleteCode(code) {
+    // 확인 후 선택한 사용자 접근 코드를 삭제하고 화면 목록에서도 제거합니다.
+    if (!window.confirm(`${code.hint} 코드를 삭제할까요?`)) return;
+    try {
+      await api.delete(`/auth/user-codes/${code.id}`);
+      setCodes((current) => current.filter((item) => item.id !== code.id));
+      onNotify("사용자 코드를 삭제했습니다.");
+    } catch (error) {
+      onNotify(error.response?.data?.detail ?? "사용자 코드를 삭제하지 못했습니다.", "error");
+    }
+  }
+
+  return <main className="dashboard"><div className="detail-topbar management-topbar"><button className="logout-button" type="button" onClick={onLogout}>로그아웃</button></div><section className="detail-card"><p className="eyebrow">ADMIN</p><h1>사용자 관리</h1><p>사용자 역할로 로그인할 수 있는 접근 코드를 발급하고 삭제합니다.</p></section>{issuedCode && <section className="management-section"><h2>새로 발급한 사용자 코드</h2><code className="command-preview">{issuedCode}</code><p className="section-description">이 코드는 지금만 전체를 확인할 수 있습니다. 사용자에게 전달한 뒤 보관해 주세요.</p></section>}<section className="management-section"><div className="file-browser-heading"><h2>사용자 코드</h2><button className="create-button" type="button" onClick={issueCode} disabled={isIssuing}>{isIssuing ? "발급 중..." : "새 사용자 코드 발급"}</button></div>{isLoading ? <p className="empty-message">사용자 코드 목록을 불러오는 중입니다.</p> : codes.length === 0 ? <p className="empty-message">발급된 사용자 코드가 없습니다.</p> : <ul className="runtime-list">{codes.map((code) => <li key={code.id}><strong>{code.hint}</strong><span>{new Date(code.created_at).toLocaleString()}</span><button className="delete-button" type="button" onClick={() => deleteCode(code)}>삭제</button></li>)}</ul>}</section></main>;
+}
+
+export default UserManagement;

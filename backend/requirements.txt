@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+starlette
+aiosqlite
+python-multipart
+httpx

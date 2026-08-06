@@ -1,0 +1,33 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8800:8000"
+    volumes:
+      - ./backend:/app
+      # 서버 JAR·월드·로그는 코드와 분리된 호스트 폴더에 영구 보관합니다.
+      - ./data:/data
+      - ./backend/JAVA:/java
+    environment:
+      # New installations must define this in the local .env file.
+      MARCHITECT_INITIAL_ADMIN_CODE: ${MARCHITECT_INITIAL_ADMIN_CODE:?Copy .env.example to .env and set an administrator code.}
+      MARCHITECT_INITIAL_USER_CODE: ${MARCHITECT_INITIAL_USER_CODE:-}
+      MARCHITECT_JAVA_ROOTS: /java
+      MARCHITECT_JAVA_INSTALL_DIR: /java
+      MARCHITECT_DEFAULT_JAVA_PATH: /java/21/bin/java
+      MARCHITECT_INSTANCE_DIR: /data/instances
+      PYTHONDONTWRITEBYTECODE: "1"
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+    depends_on:
+      - backend

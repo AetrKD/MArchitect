@@ -1,0 +1,22 @@
+# Python bytecode created while the FastAPI service runs.
+__pycache__/
+*.py[cod]
+
+# Local frontend dependencies and build output.
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# Downloaded runtimes, instances, worlds, logs, and local database.
+data/
+backend/JAVA/
+*.sqlite3
+*.db
+*.log
+
+# Local editor and environment files.
+.env
+.venv/
+backend/.venv/
+.idea/
+.vscode/
