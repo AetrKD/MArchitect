@@ -1,4 +1,4 @@
-# MArchitect
+# MArchitect ( ENG )
 
 <img width="800" height="408" alt="MArchitect preview" src="https://github.com/user-attachments/assets/2b240789-9bd2-4d9e-a0e1-440dd9bad566" />
 
@@ -63,7 +63,7 @@ This project is licensed under the [MIT License](LICENSE).
 
 ---
 
-# MArchitect (한국어)
+# MArchitect ( 한국어 )
 
 웹 기반 마인크래프트 서버 관리 애플리케이션입니다.
 
