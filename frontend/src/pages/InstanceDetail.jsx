@@ -106,7 +106,7 @@ function InstanceDetail({ instance, isAdmin, language, onBack, onToggleServer, o
 
   useEffect(() => {
     loadDetailData();
-  }, [loadDetailData]);
+  }, [loadDetailData, activeTab]);
 
   useEffect(() => {
     // 서버 출력은 WebSocket으로 받고, 접속 중이 아닐 때도 백엔드가 로그 파일에 기록합니다.
