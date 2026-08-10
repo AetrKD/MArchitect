@@ -3,8 +3,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.production
-    # Run as the host project owner so mounted data stays user-writable.
-    user: "${MARCHITECT_UID:-1000}:${MARCHITECT_GID:-1000}"
     restart: unless-stopped
     volumes:
       # Keep instances, worlds, logs, and the SQLite database outside images.
@@ -18,6 +16,8 @@ services:
       MARCHITECT_JAVA_INSTALL_DIR: /java
       MARCHITECT_DEFAULT_JAVA_PATH: /java/21/bin/java
       MARCHITECT_INSTANCE_DIR: /data/instances
+      MARCHITECT_UID: ${MARCHITECT_UID:-1000}
+      MARCHITECT_GID: ${MARCHITECT_GID:-1000}
       PYTHONDONTWRITEBYTECODE: "1"
     ports:
       # Forward this entire range to the backend container. Marchitect does

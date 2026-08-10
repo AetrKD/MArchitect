@@ -2,8 +2,6 @@ services:
   backend:
     build:
       context: ./backend
-    # Match the host project owner so new instance files stay user-writable.
-    user: "${MARCHITECT_UID:-1000}:${MARCHITECT_GID:-1000}"
     ports:
       - "8800:8000"
       # Minecraft processes run inside this container's network namespace.
@@ -23,6 +21,8 @@ services:
       MARCHITECT_JAVA_INSTALL_DIR: /java
       MARCHITECT_DEFAULT_JAVA_PATH: /java/21/bin/java
       MARCHITECT_INSTANCE_DIR: /data/instances
+      MARCHITECT_UID: ${MARCHITECT_UID:-1000}
+      MARCHITECT_GID: ${MARCHITECT_GID:-1000}
       PYTHONDONTWRITEBYTECODE: "1"
 
   frontend:

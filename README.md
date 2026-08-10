@@ -47,10 +47,12 @@ applies the new port mapping.
 
 ### Data directory ownership
 
-The backend runs as `MARCHITECT_UID:MARCHITECT_GID` (default: `1000:1000`), so
-new instance files are created with the same ownership as the Ubuntu project
-owner. Set both values in `.env` from `id -u` and `id -g`. For an existing
-deployment created by root, migrate the mounted directories once:
+At startup, the backend assigns the `/data` and `/java` mount roots to
+`MARCHITECT_UID:MARCHITECT_GID` (default: `1000:1000`) and then runs as that
+user. This also handles a missing `data` directory that Docker initially
+creates as root. Set both values in `.env` from `id -u` and `id -g`. For an
+existing deployment with root-owned files inside those directories, migrate
+them once:
 
 ```bash
 sudo chown -R "$(id -u):$(id -g)" data backend/JAVA
