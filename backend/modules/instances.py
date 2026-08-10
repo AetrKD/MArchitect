@@ -3,6 +3,7 @@ import asyncio
 import io
 import mimetypes
 import os
+import re
 import selectors
 import shutil
 import subprocess
@@ -34,7 +35,7 @@ from modules.instance_store import (
 from modules.downloads import download_remote_file
 from modules.server_catalog import fabric_download, neoforge_download_url, paper_download_url
 from modules.task_store import start_task, update_progress
-from modules.server_process import force_stop, process_metrics, recent_lines, send_command, start as start_process, stop as stop_process, synchronize_status
+from modules.server_process import console_snapshot, force_stop, process_metrics, send_command, start as start_process, stop as stop_process, synchronize_status
 from modules.auth import require_admin, session_role
 
 router = APIRouter(prefix="/instances", tags=["instances"])
@@ -89,6 +90,40 @@ def resolve_instance_file(instance_path: Path, relative_path: str) -> Path:
     if not candidate.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="실행 파일 경로에서 파일을 찾을 수 없습니다.")
     return candidate
+
+
+def configure_neoforge_launch(instance_path: Path, instance: dict) -> None:
+    """Read NeoForge's generated run.sh and retain its real server argfile."""
+    generated_script = instance_path / "run.sh"
+    try:
+        script = generated_script.read_text(encoding="utf-8")
+    except OSError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="NeoForge installation is incomplete: generated run.sh was not found.",
+        ) from error
+
+    matches = re.findall(r"@(?:'([^']*unix_args\.txt)'|\"([^\"]*unix_args\.txt)\"|([^\s]+unix_args\.txt))", script)
+    for match in matches:
+        target = next((value for value in match if value), "")
+        candidate = (instance_path / target).resolve()
+        try:
+            candidate.relative_to(instance_path.resolve())
+        except ValueError:
+            continue
+        if candidate.is_file():
+            instance.update(
+                launch_target=str(candidate.relative_to(instance_path)).replace("\\", "/"),
+                launch_kind="argfile",
+                launch_args="nogui",
+                installation_required=False,
+            )
+            return
+
+    raise HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="NeoForge installation is incomplete: unix_args.txt was not found in generated run.sh.",
+    )
 
 
 async def install_neoforge_server(instance_path: Path, instance: dict, installer_path: Path, task_record: dict | None) -> None:
@@ -149,11 +184,13 @@ async def install_neoforge_server(instance_path: Path, instance: dict, installer
         output = (result.stdout or "").strip()[-1500:]
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=f"NeoForge 서버 설치에 실패했습니다.\n{output}")
 
-    targets = sorted(instance_path.glob("libraries/net/neoforged/neoforge/**/unix_args.txt"))
+    # Ensure the installer created its launcher before parsing it below.
+    targets = [instance_path / "run.sh"] if (instance_path / "run.sh").is_file() else []
     if not targets:
         raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="NeoForge 설치 후 서버 실행 파일(unix_args.txt)을 찾지 못했습니다.")
-    launch_target = str(targets[-1].relative_to(instance_path)).replace("\\", "/")
-    instance.update(launch_target=launch_target, launch_kind="argfile", launch_args="nogui", installation_required=False)
+    # The installer has just written its canonical launcher. Capture the
+    # argfile referenced by that script before replacing run.sh ourselves.
+    configure_neoforge_launch(instance_path, instance)
     write_instance(instance_path, instance)
     write_run_script(instance_path, instance)
     if task_record:
@@ -420,8 +457,9 @@ async def update_runtime_settings(instance_id: str, update: RuntimeUpdate):
     instance["memory_mb"] = update.memory_mb
     instance["launch_mode"] = update.launch_mode
     instance["custom_command"] = update.custom_command.strip()
-    launch_file = resolve_instance_file(instance_path, update.launch_target.strip())
-    instance["launch_target"] = str(launch_file.relative_to(instance_path)).replace("\\", "/")
+    if instance.get("source_type") != "neoforge":
+        launch_file = resolve_instance_file(instance_path, update.launch_target.strip())
+        instance["launch_target"] = str(launch_file.relative_to(instance_path)).replace("\\", "/")
     write_instance(instance_path, instance)
     write_run_script(instance_path, instance)
     return {key: instance.get(key) for key in ("java_path", "memory_mb", "jvm_args", "launch_mode", "custom_command", "launch_target", "launch_kind")}
@@ -679,13 +717,17 @@ async def console_socket(websocket: WebSocket, instance_id: str, token: str | No
     sent = 0
     try:
         while True:
-            lines = recent_lines(instance_id)
-            # A new server start resets its in-memory console tail. Existing
-            # WebSocket clients must restart their cursor to receive new logs.
-            if len(lines) < sent:
+            total, lines = console_snapshot(instance_id)
+            # The buffer retains only 500 lines, while `total` keeps growing.
+            # Translate the client cursor into the current buffer window so
+            # the live console continues after the buffer first fills.
+            first_buffered = max(total - len(lines), 0)
+            if total < sent:  # A server restart reset the in-memory console.
                 sent = 0
-            for line in lines[sent:]: await websocket.send_json({"type": "log", "line": line})
-            sent = len(lines)
+            sent = max(sent, first_buffered)
+            for line in lines[sent - first_buffered:]:
+                await websocket.send_json({"type": "log", "line": line})
+            sent = total
             try:
                 command = await asyncio.wait_for(websocket.receive_text(), timeout=0.5)
                 await websocket.send_json({"type": "command", "accepted": role == "admin" and send_command(instance_id, command)})

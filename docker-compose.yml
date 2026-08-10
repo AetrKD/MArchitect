@@ -2,8 +2,14 @@ services:
   backend:
     build:
       context: ./backend
+    # Match the host project owner so new instance files stay user-writable.
+    user: "${MARCHITECT_UID:-1000}:${MARCHITECT_GID:-1000}"
     ports:
       - "8800:8000"
+      # Minecraft processes run inside this container's network namespace.
+      # Publish a configurable range so each instance can use the manually
+      # chosen `server-port` from its own server.properties file.
+      - "${MARCHITECT_MINECRAFT_PORT_RANGE:-25565-25665}:${MARCHITECT_MINECRAFT_PORT_RANGE:-25565-25665}"
     volumes:
       - ./backend:/app
       # 서버 JAR·월드·로그는 코드와 분리된 호스트 폴더에 영구 보관합니다.
@@ -23,7 +29,7 @@ services:
     build:
       context: ./frontend
     ports:
-      - "5173:5173"
+      - "${MARCHITECT_WEB_PORT:-5173}:5173"
     volumes:
       - ./frontend:/app
       - /app/node_modules

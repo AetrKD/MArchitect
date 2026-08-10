@@ -33,13 +33,41 @@ Managing a Minecraft server from a Linux command line can be inconvenient, espec
    docker compose up -d --build
    ```
 
-4. Open `http://localhost:5173` in a browser.
+4. Open `http://localhost:<MARCHITECT_WEB_PORT>` in a browser (default: `5173`).
 
 The initial codes in `.env` are used only when the SQLite database is created for the first time. Afterwards, manage the administrator code and issue or delete user codes from the administrator screens.
 
 If `data/marchitect.sqlite3` already exists, changing the initial codes in `.env` does not replace the existing codes.
 
 The development backend API is published at `http://localhost:8800`. The frontend connects to it through the `/api` path.
+
+`MARCHITECT_WEB_PORT` controls the host-side web port in both development and
+production Compose files. After changing it, recreate the containers so Docker
+applies the new port mapping.
+
+### Data directory ownership
+
+The backend runs as `MARCHITECT_UID:MARCHITECT_GID` (default: `1000:1000`), so
+new instance files are created with the same ownership as the Ubuntu project
+owner. Set both values in `.env` from `id -u` and `id -g`. For an existing
+deployment created by root, migrate the mounted directories once:
+
+```bash
+sudo chown -R "$(id -u):$(id -g)" data backend/JAVA
+```
+
+### Minecraft server ports
+
+Minecraft server processes are children of the backend container, so their
+listening ports must be published by Docker. Both Compose files forward the
+range in `MARCHITECT_MINECRAFT_PORT_RANGE` (default: `25565-25665`) from the
+host to the backend container.
+
+Marchitect does not choose, reserve, validate, or rewrite instance ports. Set
+`server-port` yourself in each instance's `server.properties`; use a port in
+that published range, then restart the instance. For example, use
+`server-port=25565` for one server and `server-port=25566` for another. Players
+connect to `HOST_IP:server-port`.
 
 ## Persistent data
 
@@ -55,7 +83,7 @@ For production, use `docker-compose.production.yml` instead of the development `
 docker compose -f docker-compose.production.yml up -d --build
 ```
 
-Open the web UI on the port set by `MARCHITECT_WEB_PORT` in `.env` (default: `5173`). Minecraft instances must use distinct ports within `MARCHITECT_MINECRAFT_PORT_RANGE` (default: `25565-25665`).
+Open the web UI on the port set by `MARCHITECT_WEB_PORT` in `.env` (default: `5173`). Set each Minecraft instance's `server-port` manually to a port within `MARCHITECT_MINECRAFT_PORT_RANGE` (default: `25565-25665`).
 
 ## License
 

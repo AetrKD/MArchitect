@@ -3,6 +3,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.production
+    # Run as the host project owner so mounted data stays user-writable.
+    user: "${MARCHITECT_UID:-1000}:${MARCHITECT_GID:-1000}"
     restart: unless-stopped
     volumes:
       # Keep instances, worlds, logs, and the SQLite database outside images.
@@ -18,7 +20,9 @@ services:
       MARCHITECT_INSTANCE_DIR: /data/instances
       PYTHONDONTWRITEBYTECODE: "1"
     ports:
-      # Allocate every Minecraft instance a unique port in this range.
+      # Forward this entire range to the backend container. Marchitect does
+      # not allocate or rewrite instance ports; set each server-port manually
+      # in that instance's server.properties file.
       - "${MARCHITECT_MINECRAFT_PORT_RANGE:-25565-25665}:${MARCHITECT_MINECRAFT_PORT_RANGE:-25565-25665}"
 
   frontend:

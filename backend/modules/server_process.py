@@ -11,6 +11,7 @@ from modules.instance_store import get_instance_path, read_instance, write_insta
 
 PROCESSES: dict[str, subprocess.Popen] = {}
 LINES: dict[str, deque[str]] = {}
+LINE_TOTALS: dict[str, int] = {}
 PROCESS_SAMPLES: dict[str, tuple[float, int]] = {}
 
 
@@ -20,6 +21,7 @@ def _collect_output(instance_path: Path, instance_id: str, process: subprocess.P
     with log_path.open("a", encoding="utf-8") as log_file:
         for line in iter(process.stdout.readline, ""):
             log_file.write(line); log_file.flush(); buffer.append(line.rstrip("\n"))
+            LINE_TOTALS[instance_id] = LINE_TOTALS.get(instance_id, 0) + 1
             if "Done (" in line:
                 instance = read_instance(instance_path); instance["status"] = "running"; write_instance(instance_path, instance)
     instance = read_instance(instance_path)
@@ -97,6 +99,7 @@ def start(instance_path: Path) -> dict:
     # The browser console reads this separate in-memory tail, so reset it
     # together with the on-disk logs for a genuinely clean new start.
     LINES[instance["id"]] = deque(maxlen=500)
+    LINE_TOTALS[instance["id"]] = 0
     # Always regenerate from the saved execution settings so an updated
     # launcher format is reflected on the next server start.
     write_run_script(instance_path, instance)
@@ -112,6 +115,11 @@ def start(instance_path: Path) -> dict:
 def recent_lines(instance_id: str) -> list[str]:
     """새 콘솔 연결에 보낼 최근 실시간 로그 줄을 반환합니다."""
     return list(LINES.get(instance_id, ()))
+
+
+def console_snapshot(instance_id: str) -> tuple[int, list[str]]:
+    """Return the total emitted line count and the newest buffered lines."""
+    return LINE_TOTALS.get(instance_id, 0), list(LINES.get(instance_id, ()))
 
 
 def process_metrics(instance_id: str) -> dict | None:
