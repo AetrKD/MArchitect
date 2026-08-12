@@ -15,6 +15,26 @@ LINE_TOTALS: dict[str, int] = {}
 PROCESS_SAMPLES: dict[str, tuple[float, int]] = {}
 
 
+def _mark_stopped(instance_path: Path, instance_id: str, process_id: int) -> None:
+    """Persist a completed process even when its stdout pipe remains open."""
+    managed_process = PROCESSES.get(instance_id)
+    if managed_process and managed_process.pid == process_id:
+        PROCESSES.pop(instance_id, None)
+    instance = read_instance(instance_path)
+    # A newer server start may have reused this instance while the old process
+    # watcher was still winding down.
+    if instance.get("process_pid") == process_id:
+        instance["status"] = "stopped"
+        instance.pop("process_pid", None)
+        write_instance(instance_path, instance)
+
+
+def _watch_process(instance_path: Path, instance_id: str, process: subprocess.Popen) -> None:
+    """Update lifecycle state from process exit, not console stream EOF."""
+    process.wait()
+    _mark_stopped(instance_path, instance_id, process.pid)
+
+
 def _collect_output(instance_path: Path, instance_id: str, process: subprocess.Popen, log_path: Path) -> None:
     """브라우저 연결 여부와 무관하게 서버 출력을 로그 파일에 계속 저장합니다."""
     buffer = LINES.setdefault(instance_id, deque(maxlen=500))
@@ -24,12 +44,7 @@ def _collect_output(instance_path: Path, instance_id: str, process: subprocess.P
             LINE_TOTALS[instance_id] = LINE_TOTALS.get(instance_id, 0) + 1
             if "Done (" in line:
                 instance = read_instance(instance_path); instance["status"] = "running"; write_instance(instance_path, instance)
-    instance = read_instance(instance_path)
-    # A newer process may have been started while this output reader was ending.
-    if instance.get("process_pid") == process.pid:
-        instance["status"] = "stopped"
-        instance.pop("process_pid", None)
-        write_instance(instance_path, instance)
+    _mark_stopped(instance_path, instance_id, process.pid)
 
 
 def _is_instance_server_process(process_id: int, instance_path: Path) -> bool:
@@ -46,11 +61,14 @@ def _is_instance_server_process(process_id: int, instance_path: Path) -> bool:
 
 def find_process_id(instance_id: str) -> int | None:
     """백엔드 재시작 뒤에도 살아 있는 인스턴스 프로세스를 찾아냅니다."""
+    instance_path = get_instance_path(instance_id)
     managed_process = PROCESSES.get(instance_id)
     if managed_process and managed_process.poll() is None:
-        return managed_process.pid
+        # `run.sh` normally execs Java. If a launcher leaves a shell behind,
+        # do not mistake that shell for a still-running Minecraft server.
+        if _is_instance_server_process(managed_process.pid, instance_path):
+            return managed_process.pid
 
-    instance_path = get_instance_path(instance_id)
     instance = read_instance(instance_path)
     saved_process_id = instance.get("process_pid")
     if isinstance(saved_process_id, int) and _is_instance_server_process(saved_process_id, instance_path):
@@ -105,10 +123,11 @@ def start(instance_path: Path) -> dict:
     write_run_script(instance_path, instance)
     process = subprocess.Popen(["/bin/sh", "./run.sh"], cwd=instance_path, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     PROCESSES[instance["id"]] = process
-    threading.Thread(target=_collect_output, args=(instance_path, instance["id"], process, logs / "latest.log"), daemon=True).start()
     instance["status"] = "starting"
     instance["process_pid"] = process.pid
     write_instance(instance_path, instance)
+    threading.Thread(target=_collect_output, args=(instance_path, instance["id"], process, logs / "latest.log"), daemon=True).start()
+    threading.Thread(target=_watch_process, args=(instance_path, instance["id"], process), daemon=True).start()
     return instance
 
 
