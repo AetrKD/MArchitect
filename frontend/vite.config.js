@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    // Allow access through the server's public DNS name in development.
+    allowedHosts: [],
     // Match production's /api reverse-proxy path while developing with Vite.
     proxy: {
       "/api": {
