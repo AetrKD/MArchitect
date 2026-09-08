@@ -9,7 +9,8 @@ COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY docker-entrypoint.sh /usr/local/bin/marchitect-entrypoint
-RUN chmod +x /usr/local/bin/marchitect-entrypoint
+RUN sed -i 's/\r$//' /usr/local/bin/marchitect-entrypoint \
+    && chmod +x /usr/local/bin/marchitect-entrypoint
 
 COPY . ./
 

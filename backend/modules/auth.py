@@ -1,5 +1,6 @@
 """접근 코드 로그인과 관리자 전용 코드 관리를 제공하는 API입니다."""
 import hashlib
+import asyncio
 import os
 import secrets
 from datetime import datetime, timezone
@@ -143,3 +144,16 @@ async def delete_user_code(code_id: int, _: str = Depends(require_admin)):
         await database.commit()
     if cursor.rowcount == 0:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="사용자 코드를 찾을 수 없습니다.")
+
+
+if __name__ == "__main__":
+    # Initialize as the runtime user before importing the rest of the app.
+    import sys
+
+    print(f"[marchitect] initializing SQLite database at {AUTH_DATABASE.resolve()}", flush=True)
+    try:
+        asyncio.run(initialize_auth_database())
+    except Exception as error:
+        print(f"[marchitect] error: SQLite initialization failed at {AUTH_DATABASE.resolve()}: {error}", file=sys.stderr)
+        sys.exit(1)
+    print(f"[marchitect] SQLite database ready at {AUTH_DATABASE.resolve()}", flush=True)

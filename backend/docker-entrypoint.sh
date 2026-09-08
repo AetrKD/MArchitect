@@ -8,6 +8,7 @@ set -eu
 uid="${MARCHITECT_UID:-1000}"
 gid="${MARCHITECT_GID:-1000}"
 auth_database="${MARCHITECT_AUTH_DB:-/data/marchitect.sqlite3}"
+export MARCHITECT_AUTH_DB="$auth_database"
 auth_dir="$(dirname "$auth_database")"
 
 mkdir -p /data /java "$auth_dir"
@@ -62,6 +63,7 @@ can_write() {
 }
 
 if can_write target /data /java "$auth_dir"; then
+    gosu "$uid:$gid" python -m modules.auth
     exec gosu "$uid:$gid" "$@"
 fi
 
@@ -72,6 +74,7 @@ fi
 if can_write current /data /java "$auth_dir"; then
     echo "[marchitect] warning: $uid:$gid cannot write the mounted data directories; continuing as $(id -u):$(id -g)." >&2
     echo "[marchitect] warning: set MARCHITECT_UID/MARCHITECT_GID to writable host IDs if you want non-root execution inside the container." >&2
+    python -m modules.auth
     exec "$@"
 fi
 
