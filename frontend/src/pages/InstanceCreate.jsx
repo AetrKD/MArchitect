@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import api from "../lib/api.js";
-const SERVER_TYPES = [["paper", "바닐라 (Paper)"], ["fabric", "Fabric"], ["neoforge", "NeoForge"], ["upload", "기타 (JAR 업로드)"]];
+const SERVER_TYPES = [["paper", "Paper (플러그인 지원)"], ["fabric", "Fabric"], ["neoforge", "NeoForge"], ["upload", "기타 (JAR 업로드)"]];
 
 function InstanceCreate({ onCreate, onCancel, onLogout }) {
   // 생성 폼의 선택값과 다운로드 가능한 버전 목록을 관리합니다.
@@ -33,7 +33,7 @@ function InstanceCreate({ onCreate, onCancel, onLogout }) {
   }, [sourceType, minecraftVersion]);
 
   async function handleSubmit(event) {
-    // 필요한 값이 준비되었을 때 상위 앱에 인스턴스 생성을 요청합니다.
+    // 필요한 값이 준비되었을 때 상위 앱에 게임 서버 만들기을 요청합니다.
     event.preventDefault();
     if (sourceType === "upload" && !file) {
       setError("서버 JAR 파일을 선택해 주세요.");
@@ -43,12 +43,12 @@ function InstanceCreate({ onCreate, onCancel, onLogout }) {
     try {
       await onCreate({ name: name.trim(), sourceType, file, minecraftVersion, loaderVersion, neoforgeVersion: null });
     } catch (requestError) {
-      setError(requestError.response?.data?.detail ?? "인스턴스를 생성하지 못했습니다.");
+      setError(requestError.response?.data?.detail ?? "게임 서버를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.");
       setIsSubmitting(false);
     }
   }
 
-  return <main className="dashboard"><div className="detail-topbar"><button className="back-link" type="button" onClick={onCancel}>← 인스턴스 목록</button><button className="logout-button" type="button" onClick={onLogout}>로그아웃</button></div><section className="form-card"><p className="eyebrow">NEW INSTANCE</p><h1>인스턴스 생성</h1><p className="form-description">서버 유형을 먼저 선택하세요. 직접 JAR을 올리는 경우에는 버전 선택이 필요하지 않습니다.</p><form className="instance-form" onSubmit={handleSubmit}><label htmlFor="instance-name">서버 이름</label><input id="instance-name" value={name} onChange={(event) => setName(event.target.value)} required autoFocus /><label htmlFor="source-type">서버 유형</label><select id="source-type" value={sourceType} onChange={(event) => setSourceType(event.target.value)}>{SERVER_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{sourceType === "upload" ? <><label htmlFor="instance-file">서버 JAR 파일</label><input id="instance-file" type="file" accept=".jar" onChange={(event) => setFile(event.target.files?.[0] ?? null)} required /></> : <><VersionSelect label="마인크래프트 버전" id="minecraft-version" versions={minecraftVersions} value={minecraftVersion} onChange={setMinecraftVersion} />{sourceType === "fabric" && <VersionSelect label="Fabric Loader 버전" id="loader-version" versions={loaderVersions} value={loaderVersion} onChange={setLoaderVersion} />}{sourceType === "neoforge" && <VersionSelect label="NeoForge 로더 버전" id="loader-version" versions={loaderVersions} value={loaderVersion} onChange={setLoaderVersion} />}</>}{error && <p className="form-error">{error}</p>}<div className="form-actions"><button className="cancel-button" type="button" onClick={onCancel} disabled={isSubmitting}>취소</button><button className="create-button" type="submit" disabled={isSubmitting}>{isSubmitting ? "생성 중..." : "인스턴스 생성"}</button></div></form></section></main>;
+  return <main className="dashboard"><div className="detail-topbar"><button className="back-link" type="button" onClick={onCancel}>← 게임 서버 목록</button><button className="logout-button" type="button" onClick={onLogout}>로그아웃</button></div><section className="form-card"><p className="eyebrow">NEW INSTANCE</p><h1>게임 서버 만들기</h1><p className="form-description">서버 유형과 게임 버전을 선택하세요. 서버 JAR 파일을 직접 올릴 수도 있습니다.</p><form className="instance-form" onSubmit={handleSubmit}><label htmlFor="instance-name">서버 이름</label><input id="instance-name" value={name} onChange={(event) => setName(event.target.value)} required autoFocus /><label htmlFor="source-type">서버 유형</label><select id="source-type" value={sourceType} onChange={(event) => setSourceType(event.target.value)}>{SERVER_TYPES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{sourceType === "upload" ? <><label htmlFor="instance-file">서버 JAR 파일</label><input id="instance-file" type="file" accept=".jar" onChange={(event) => setFile(event.target.files?.[0] ?? null)} required /></> : <><VersionSelect label="마인크래프트 버전" id="minecraft-version" versions={minecraftVersions} value={minecraftVersion} onChange={setMinecraftVersion} />{sourceType === "fabric" && <VersionSelect label="Fabric Loader 버전" id="loader-version" versions={loaderVersions} value={loaderVersion} onChange={setLoaderVersion} />}{sourceType === "neoforge" && <VersionSelect label="NeoForge 로더 버전" id="loader-version" versions={loaderVersions} value={loaderVersion} onChange={setLoaderVersion} />}</>}{error && <p className="form-error">{error}</p>}<div className="form-actions"><button className="cancel-button" type="button" onClick={onCancel} disabled={isSubmitting}>취소</button><button className="create-button" type="submit" disabled={isSubmitting}>{isSubmitting ? "생성 중..." : "게임 서버 만들기"}</button></div></form></section></main>;
 }
 
 function VersionSelect({ label, id, versions, value, onChange }) {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import api from "../lib/api.js";
-import { getMessages } from "../i18n/translations.js";
+import { getMessages, translate, translateTaskTitle } from "../i18n/translations.js";
 
 function AdminRuntime({ language, onLogout, onNotify, onConfirm }) {
   // Java 목록, 선택 버전, 현재 설치 작업 상태를 관리합니다.
@@ -41,11 +41,11 @@ function AdminRuntime({ language, onLogout, onNotify, onConfirm }) {
       try {
         const { data: task } = await api.get(`/tasks/${activeTask.id}`);
         if (task.status === "completed") {
-          onNotify(`${task.title} 완료`);
+          onNotify(language === "en" ? `${translateTaskTitle(language, task.title)}: completed.` : `${task.title}: 완료되었습니다.`);
           setActiveTask(null);
           await loadRuntimes();
         } else if (task.status === "failed") {
-          onNotify(`${task.title}: ${task.error || "실패했습니다."}`, "error");
+          onNotify(`${translateTaskTitle(language, task.title)}: ${translate(language, task.error || "실패했습니다.")}`, "error");
           setActiveTask(null);
         }
       } catch {
@@ -53,7 +53,7 @@ function AdminRuntime({ language, onLogout, onNotify, onConfirm }) {
       }
     }, 1500);
     return () => window.clearInterval(intervalId);
-  }, [activeTask, loadRuntimes, onNotify]);
+  }, [activeTask, loadRuntimes, onNotify, language]);
 
   async function installRuntime() {
     // 드롭다운에서 선택한 Java 버전을 백그라운드 설치 작업으로 등록합니다.
@@ -62,7 +62,7 @@ function AdminRuntime({ language, onLogout, onNotify, onConfirm }) {
     try {
       const { data: task } = await api.post("/admin/java-runtimes/download", { major_version: majorVersion });
       setActiveTask(task);
-      onNotify(`Java ${majorVersion} 다운로드를 시작했습니다.`, "info");
+      onNotify(language === "en" ? `Downloading Java ${majorVersion}.` : `Java ${majorVersion} 다운로드를 시작했습니다.`, "info");
     } catch (error) {
       onNotify(error.response?.data?.detail ?? "Java를 다운로드하지 못했습니다.", "error");
     }
@@ -74,7 +74,7 @@ function AdminRuntime({ language, onLogout, onNotify, onConfirm }) {
     setActiveTask({ id: runtime.managed_directory, deleting: true });
     try {
       await api.delete(`/admin/java-runtimes/${encodeURIComponent(runtime.managed_directory)}`);
-      onNotify(`${runtime.name} 런타임을 삭제했습니다.`);
+      onNotify(language === "en" ? `Deleted ${runtime.name}.` : `${runtime.name}을 삭제했습니다.`);
       await loadRuntimes();
     } catch (error) {
       onNotify(error.response?.data?.detail ?? "Java 런타임을 삭제하지 못했습니다.", "error");
@@ -93,7 +93,7 @@ function AdminRuntime({ language, onLogout, onNotify, onConfirm }) {
     <RuntimeTopBar onLogout={onLogout} />
     <section className="detail-card"><p className="eyebrow">ADMIN</p><h1>{runtimeText.title}</h1><p>{runtimeText.description}</p></section>
     <InstalledRuntimes runtimes={installed} isBusy={isBusy} activeTask={activeTask} onDelete={deleteRuntime} />
-    <section className="management-section"><h2>Temurin Linux x64 다운로드</h2><div className="runtime-buttons"><select aria-label="설치할 Java 버전" value={selectedVersion} onChange={(event) => setSelectedVersion(event.target.value)} disabled={isBusy || available.length === 0}>{available.map((version) => <option key={version} value={version}>Java {version}{installedVersions.has(String(version)) ? " (설치됨)" : ""}</option>)}</select><button className="create-button" type="button" disabled={!selectedVersion || isBusy || isInstalled} onClick={installRuntime}>{isInstalled ? "이미 설치됨" : isBusy ? "설치 중..." : "설치"}</button></div></section>
+    <section className="management-section"><h2>Java 설치 (Temurin · Linux x64)</h2><div className="runtime-buttons"><select aria-label="설치할 Java 버전" value={selectedVersion} onChange={(event) => setSelectedVersion(event.target.value)} disabled={isBusy || available.length === 0}>{available.map((version) => <option key={version} value={version}>Java {version}{installedVersions.has(String(version)) ? " (설치됨)" : ""}</option>)}</select><button className="create-button" type="button" disabled={!selectedVersion || isBusy || isInstalled} onClick={installRuntime}>{isInstalled ? "이미 설치됨" : isBusy ? "설치 중..." : "설치"}</button></div></section>
   </main>;
 }
 
@@ -104,12 +104,12 @@ function RuntimeTopBar({ onLogout }) {
 
 function RuntimeLoading({ onLogout }) {
   // 런타임 API 응답 전에는 레이아웃이 흔들리지 않는 로딩 화면을 표시합니다.
-  return <main className="dashboard"><RuntimeTopBar onLogout={onLogout} /><section className="loading-screen" role="status"><span className="loading-spinner" aria-hidden="true" /><h1>Java 런타임 정보를 불러오는 중입니다.</h1><p>설치된 Java와 다운로드 가능한 버전을 확인하고 있습니다.</p></section></main>;
+  return <main className="dashboard"><RuntimeTopBar onLogout={onLogout} /><section className="loading-screen" role="status"><span className="loading-spinner" aria-hidden="true" /><h1>Java 정보를 불러오는 중입니다.</h1><p>설치된 Java와 설치 가능한 버전을 확인하고 있습니다.</p></section></main>;
 }
 
 function InstalledRuntimes({ runtimes, isBusy, activeTask, onDelete }) {
-  // 설치된 런타임 목록과 각 항목의 삭제 동작을 표시합니다.
-  return <section className="management-section"><h2>설치된 런타임</h2>{runtimes.length === 0 ? <p className="empty-message">감지된 Java 런타임이 없습니다.</p> : <ul className="runtime-list">{runtimes.map((runtime) => <li key={runtime.id}><strong>{runtime.name}</strong><span>{runtime.version}</span><code>{runtime.path}</code>{runtime.managed_directory && <button className="delete-button" type="button" disabled={isBusy} onClick={() => onDelete(runtime)}>{activeTask?.deleting && activeTask.id === runtime.managed_directory ? "삭제 중..." : "삭제"}</button>}</li>)}</ul>}</section>;
+  // 설치된 Java 목록과 각 항목의 삭제 동작을 표시합니다.
+  return <section className="management-section"><h2>설치된 Java</h2>{runtimes.length === 0 ? <p className="empty-message">설치된 Java가 없습니다. 아래에서 필요한 버전을 설치하세요.</p> : <ul className="runtime-list">{runtimes.map((runtime) => <li key={runtime.id}><strong>{runtime.name}</strong><span>{runtime.version}</span><code>{runtime.path}</code>{runtime.managed_directory && <button className="delete-button" type="button" disabled={isBusy} onClick={() => onDelete(runtime)}>{activeTask?.deleting && activeTask.id === runtime.managed_directory ? "삭제 중..." : "삭제"}</button>}</li>)}</ul>}</section>;
 }
 
 export default AdminRuntime;

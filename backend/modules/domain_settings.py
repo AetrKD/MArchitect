@@ -56,7 +56,7 @@ def read_domains():
             row = database.execute("SELECT value FROM settings WHERE key = 'allowed_hosts'").fetchone()
         return DomainSettings.model_validate_json(row[0]) if row else DomainSettings(domains=[])
     except (ValueError, sqlite3.Error):
-        raise HTTPException(500, "도메인 설정을 불러오지 못했습니다.")
+        raise HTTPException(500, "접속 주소를 불러오지 못했습니다.")
 
 
 @router.put("", dependencies=[Depends(require_admin)])
@@ -67,11 +67,11 @@ def write_domains(settings: DomainSettings):
                 database.execute("INSERT INTO settings (key, value) VALUES ('allowed_hosts', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", (settings.model_dump_json(),))
                 database.commit()
         except sqlite3.Error:
-            raise HTTPException(500, "접속 주소를 DB에 저장하지 못했습니다.")
+            raise HTTPException(500, "접속 주소를 저장하지 못했습니다. 다시 시도해 주세요.")
         try:
             publish_domains(settings)
         except OSError:
-            raise HTTPException(500, "DB에는 저장했지만 웹 서버에 적용하지 못했습니다. 다시 저장하거나 백엔드를 재시작해 주세요.")
+            raise HTTPException(500, "주소는 저장했지만 아직 적용하지 못했습니다. 다시 저장하거나 MArchitect를 재시작해 주세요.")
     return settings
 
 

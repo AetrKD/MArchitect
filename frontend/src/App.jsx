@@ -10,7 +10,7 @@ import UserManagement from "./pages/UserManagement.jsx";
 import AppSidebar from "./components/AppSidebar.jsx";
 import ToastNotifications from "./components/ToastNotifications.jsx";
 import ConfirmDialog from "./components/ConfirmDialog.jsx";
-import { translate } from "./i18n/translations.js";
+import { translate, translateTaskTitle } from "./i18n/translations.js";
 import "./App.css";
 
 function App() {
@@ -55,6 +55,7 @@ function App() {
     window.localStorage.setItem("marchitect-language", language);
     window.localStorage.setItem("marchitect-theme", theme);
     document.documentElement.dataset.theme = theme;
+    document.documentElement.lang = language;
   }, [language, theme]);
 
   useEffect(() => {
@@ -101,7 +102,7 @@ function App() {
         const response = await api.get("/instances");
         setInstances(response.data);
       } catch (error) {
-        console.error("인스턴스 목록을 불러오지 못했습니다.", error);
+        console.error("게임 서버 목록을 불러오지 못했습니다.", error);
       }
     }
     loadInstances();
@@ -124,9 +125,9 @@ function App() {
         response.data.forEach((task) => {
           const previous = taskStates.current.get(task.id);
           nextStates.set(task.id, { status: task.status, progress: task.progress });
-          if (!previous && task.status === "running") notify(`${task.title}: 작업을 시작했습니다.`, "info");
-          if (previous && previous.status !== "completed" && task.status === "completed") notify(`${task.title}: 완료되었습니다.`);
-          if (previous && previous.status !== "failed" && task.status === "failed") notify(`${task.title}: ${task.error || "실패했습니다."}`, "error");
+          if (!previous && task.status === "running") notify(language === "en" ? `${translateTaskTitle(language, task.title)}: started.` : `${task.title}: 작업을 시작했습니다.`, "info");
+          if (previous && previous.status !== "completed" && task.status === "completed") notify(language === "en" ? `${translateTaskTitle(language, task.title)}: completed.` : `${task.title}: 완료되었습니다.`);
+          if (previous && previous.status !== "failed" && task.status === "failed") notify(`${translateTaskTitle(language, task.title)}: ${translate(language, task.error || "실패했습니다.")}`, "error");
         });
         taskStates.current = nextStates;
       } catch (error) {
@@ -136,7 +137,7 @@ function App() {
     loadTasks();
     const intervalId = window.setInterval(loadTasks, 2000);
     return () => window.clearInterval(intervalId);
-  }, [role, notify]);
+  }, [role, notify, language]);
 
   function navigate(nextPath) {
     // 별도 라우터 없이 주소와 화면 상태를 함께 이동합니다.
@@ -171,7 +172,7 @@ function App() {
   }
 
   async function createInstance({ name, sourceType, file, minecraftVersion, loaderVersion, neoforgeVersion }) {
-    // 업로드 또는 공식 카탈로그 방식으로 인스턴스 생성을 요청합니다.
+    // 업로드 또는 공식 카탈로그 방식으로 게임 서버 만들기을 요청합니다.
     let response;
     if (sourceType === "upload") {
       const formData = new FormData();
@@ -203,7 +204,7 @@ function App() {
       setInstances((current) => current.filter((instance) => instance.id !== id));
       return true;
     } catch (error) {
-      notify(error.response?.data?.detail ?? "인스턴스를 삭제하지 못했습니다.", "error");
+      notify(error.response?.data?.detail ?? "게임 서버를 삭제하지 못했습니다.", "error");
       return false;
     }
   }

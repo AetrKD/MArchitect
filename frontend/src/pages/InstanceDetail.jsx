@@ -3,7 +3,7 @@ import api, { apiFileUrl, apiWebSocketUrl } from "../lib/api.js";
 const NAV_ITEMS = [
   ["overview", "개요"],
   ["settings", "설정"],
-  ["instance-settings", "인스턴스 설정"],
+  ["instance-settings", "서버 정보"],
   ["access", "접근 관리"],
   ["logs", "로그"],
   ["world", "월드"],
@@ -100,7 +100,7 @@ function InstanceDetail({ instance, isAdmin, language, onBack, onToggleServer, o
       });
       setExtensions(extensionsResponse.data);
     } catch {
-      onNotify("인스턴스 상세 정보를 불러오지 못했습니다.", "error");
+      onNotify("게임 서버 정보를 불러오지 못했습니다.", "error");
     }
   }, [instance.id, instance.jar_filename, onNotify]);
 
@@ -191,7 +191,7 @@ function InstanceDetail({ instance, isAdmin, language, onBack, onToggleServer, o
 
   async function deleteThisInstance() {
     // 확인을 받은 뒤 인스턴스 전체 삭제를 상위 화면에 요청하고 목록으로 돌아갑니다.
-    if (!await onConfirm({ title: "서버 삭제", titleEn: "Delete server", message: `"${instance.name}" 인스턴스와 내부 서버 파일을 모두 삭제할까요? 이 작업은 되돌릴 수 없습니다.`, messageEn: `Delete "${instance.name}" and all of its server files? This cannot be undone.`, confirmLabel: "삭제", confirmLabelEn: "Delete" })) return;
+    if (!await onConfirm({ title: "서버 삭제", titleEn: "Delete server", message: `"${instance.name}" 게임 서버와 모든 파일을 삭제할까요? 이 작업은 되돌릴 수 없습니다.`, messageEn: `Delete "${instance.name}" and all of its server files? This cannot be undone.`, confirmLabel: "삭제", confirmLabelEn: "Delete" })) return;
     if (await onDelete(instance.id)) onBack();
   }
 
@@ -218,7 +218,7 @@ function InstanceDetail({ instance, isAdmin, language, onBack, onToggleServer, o
       {activeTab === "settings" && (<>
         <section className="management-section">
           <h2>실행 설정</h2>
-          <div className="command-mode-toggle" role="group" aria-label="명령어 타입"><button className={launchMode === "basic" ? "active" : ""} type="button" disabled={!isAdmin} onClick={() => setLaunchMode("basic")}>기본</button><button className={launchMode === "custom" ? "active" : ""} type="button" disabled={!isAdmin} onClick={() => setLaunchMode("custom")}>커스텀</button></div>
+          <div className="command-mode-toggle" role="group" aria-label="실행 방식"><button className={launchMode === "basic" ? "active" : ""} type="button" disabled={!isAdmin} onClick={() => setLaunchMode("basic")}>기본</button><button className={launchMode === "custom" ? "active" : ""} type="button" disabled={!isAdmin} onClick={() => setLaunchMode("custom")}>직접 입력</button></div>
           {launchMode === "custom" ? <><label htmlFor="custom-command">전체 시작 명령어</label><textarea id="custom-command" value={customCommand} onChange={(event) => setCustomCommand(event.target.value)} rows="4" disabled={!isAdmin} placeholder={isEnglish ? "e.g. /java/.../bin/java -Xmx2G -jar paper.jar nogui" : "예: /java/.../bin/java -Xmx2G -jar paper.jar nogui"} /></> : <><label htmlFor="java-version">Java 버전</label><select id="java-version" value={javaVersion} onChange={(event) => selectJavaVersion(event.target.value)} disabled={!isAdmin}>{javaVersions.map((version) => <option key={version} value={version}>Java {version}</option>)}</select><label htmlFor="java-distribution">Java 종류</label><select id="java-distribution" value={javaDistribution} onChange={(event) => selectJavaDistribution(event.target.value)} disabled={!isAdmin}>{javaDistributions.map((distribution) => <option key={distribution} value={distribution}>{distribution}</option>)}</select><label htmlFor="memory">{isEnglish ? `Memory: ${memoryMb} MB (max ${maxMemoryMb} MB)` : `메모리: ${memoryMb} MB (최대 ${maxMemoryMb} MB)`}</label><input id="memory" type="range" min="256" max={maxMemoryMb} step="256" value={Math.min(memoryMb, maxMemoryMb)} onChange={(event) => setMemoryMb(Number(event.target.value))} disabled={!isAdmin} /><label htmlFor="jvm-args">추가 JVM 인수</label><input id="jvm-args" value={jvmArgs} onChange={(event) => setJvmArgs(withoutMemoryJvmArgs(event.target.value))} placeholder={isEnglish ? "e.g. -Dfile.encoding=UTF-8" : "예: -Dfile.encoding=UTF-8"} disabled={!isAdmin} /><label htmlFor="launch-target">실행 파일 경로</label><input id="launch-target" value={launchTarget} onChange={(event) => setLaunchTarget(event.target.value)} placeholder={launchKind === "argfile" ? "libraries/.../unix_args.txt" : "server.jar"} disabled={!isAdmin} /></>}
           {launchMode === "basic" && <><label>최종 시작 명령어</label><code className="command-preview">{previewCommand}</code></>}
           {isAdmin && <button className="create-button" type="button" onClick={() => save("runtime", { java_path: javaPath, memory_mb: memoryMb, jvm_args: jvmArgs, launch_mode: launchMode, custom_command: customCommand, launch_target: launchTarget }, "실행 설정을 저장했습니다.")}>저장</button>}
@@ -229,8 +229,8 @@ function InstanceDetail({ instance, isAdmin, language, onBack, onToggleServer, o
 
       {activeTab === "instance-settings" && <>
         <section className="management-section"><h2>서버 이름</h2><input value={instanceName} onChange={(event) => setInstanceName(event.target.value)} disabled={!isAdmin} />{isAdmin && <button className="create-button" type="button" onClick={() => save("name", { name: instanceName }, "서버 이름을 저장했습니다.")}>저장</button>}</section>
-        <section className="management-section"><h2>서버 아이콘</h2><p className="section-description">64 × 64 픽셀 PNG 파일을 <code>server-icon.png</code>로 저장합니다.</p><div className="server-icon-upload">{iconVersion ? <img src={`${apiFileUrl(`/instances/${instance.id}/server-icon`)}&v=${encodeURIComponent(iconVersion)}`} alt="서버 아이콘 미리보기" /> : <span className="server-icon stopped">◆</span>}<input ref={iconInput} className="visually-hidden" type="file" accept="image/png,.png" onChange={uploadServerIcon} />{isAdmin && <button className="create-button" type="button" onClick={() => iconInput.current?.click()}>{isEnglish ? "Upload server-icon.png" : "server-icon.png 업로드"}</button>}</div></section>
-        <section className="management-section danger-zone"><h2>서버 삭제</h2><p className="section-description">인스턴스와 월드, 모드, 플러그인 등 내부의 모든 파일을 삭제합니다.</p>{isAdmin && <button className="delete-button" type="button" onClick={deleteThisInstance}>서버 삭제</button>}</section>
+        <section className="management-section"><h2>서버 아이콘</h2><p className="section-description">64 × 64 픽셀의 PNG 이미지를 선택하세요.</p><div className="server-icon-upload">{iconVersion ? <img src={`${apiFileUrl(`/instances/${instance.id}/server-icon`)}&v=${encodeURIComponent(iconVersion)}`} alt="서버 아이콘 미리보기" /> : <span className="server-icon stopped">◆</span>}<input ref={iconInput} className="visually-hidden" type="file" accept="image/png,.png" onChange={uploadServerIcon} />{isAdmin && <button className="create-button" type="button" onClick={() => iconInput.current?.click()}>{isEnglish ? "Upload icon" : "아이콘 업로드"}</button>}</div></section>
+        <section className="management-section danger-zone"><h2>서버 삭제</h2><p className="section-description">이 게임 서버와 월드, 모드, 플러그인을 포함한 모든 파일을 삭제합니다. 삭제 후에는 되돌릴 수 없습니다.</p>{isAdmin && <button className="delete-button" type="button" onClick={deleteThisInstance}>서버 삭제</button>}</section>
       </>}
 
       {activeTab === "access" && (
@@ -241,11 +241,11 @@ function InstanceDetail({ instance, isAdmin, language, onBack, onToggleServer, o
       )}
 
       {activeTab === "logs" && <FileBrowser instanceId={instance.id} area="logs" title={isEnglish ? "Log files" : "로그 파일"} isAdmin={isAdmin} onConfirm={onConfirm} />}
-      {activeTab === "world" && <FileBrowser instanceId={instance.id} area="world" title={isEnglish ? "World files" : "월드 파일"} isAdmin={isAdmin} onConfirm={onConfirm} clearable directoryUpload beforeUpload={<a className="create-button" href={apiFileUrl(`/instances/${instance.id}/world/download`)}>{isEnglish ? "Download world ZIP" : "world 폴더 ZIP 다운로드"}</a>} />}
-      {["mods", "plugins", "config"].includes(activeTab) && <FileBrowser instanceId={instance.id} area={activeTab} title={activeTab === "mods" ? isEnglish ? "Mods" : "모드" : activeTab === "plugins" ? isEnglish ? "Plugins" : "플러그인" : "Config"} isAdmin={isAdmin} onConfirm={onConfirm} clearable />}
+      {activeTab === "world" && <FileBrowser instanceId={instance.id} area="world" title={isEnglish ? "World files" : "월드 파일"} isAdmin={isAdmin} onConfirm={onConfirm} clearable directoryUpload beforeUpload={<a className="create-button" href={apiFileUrl(`/instances/${instance.id}/world/download`)}>{isEnglish ? "Download world ZIP" : "월드 ZIP 다운로드"}</a>} />}
+      {["mods", "plugins", "config"].includes(activeTab) && <FileBrowser instanceId={instance.id} area={activeTab} title={activeTab === "mods" ? isEnglish ? "Mods" : "모드" : activeTab === "plugins" ? isEnglish ? "Plugins" : "플러그인" : "설정 파일"} isAdmin={isAdmin} onConfirm={onConfirm} clearable />}
 
-      {isAdmin && <nav className="detail-nav" aria-label="인스턴스 상세 메뉴">
-        {[...NAV_ITEMS, ...(extensions.mods.exists ? [["mods", "모드"]] : []), ...(extensions.plugins.exists ? [["plugins", "플러그인"]] : []), ...(extensions.config.exists ? [["config", "Config"]] : [])].map(([id, label]) => <button className={activeTab === id ? "active" : ""} type="button" key={id} onClick={() => setActiveTab(id)}>{label}</button>)}
+      {isAdmin && <nav className="detail-nav" aria-label="게임 서버 상세 메뉴">
+        {[...NAV_ITEMS, ...(extensions.mods.exists ? [["mods", "모드"]] : []), ...(extensions.plugins.exists ? [["plugins", "플러그인"]] : []), ...(extensions.config.exists ? [["config", "설정 파일"]] : [])].map(([id, label]) => <button className={activeTab === id ? "active" : ""} type="button" key={id} onClick={() => setActiveTab(id)}>{label}</button>)}
       </nav>}
     </main>
   );
@@ -275,7 +275,7 @@ function NameListEditor({ title, names, setNames, exists, isAdmin, onSave }) {
 
 function ConfigUnavailable() {
   // 서버를 한 번도 시작하지 않아 설정 파일이 없을 때 안내합니다.
-  return <p className="empty-message">서버를 한 번 시작하면 이 파일이 생성됩니다.</p>;
+  return <p className="empty-message">게임 서버를 먼저 시작해 설정 파일을 생성하세요.</p>;
 }
 
 function FileBrowser({ instanceId, area, title, isAdmin, onConfirm, beforeUpload, clearable = false, directoryUpload = false }) {
@@ -379,14 +379,14 @@ function FileBrowser({ instanceId, area, title, isAdmin, onConfirm, beforeUpload
       setCurrentPath("");
       await loadEntries("");
     } catch (error) {
-      setBrowserError(error.response?.data?.detail ?? "world 폴더를 업로드하지 못했습니다.");
+      setBrowserError(error.response?.data?.detail ?? "월드 폴더를 업로드하지 못했습니다.");
     } finally {
       setIsUploading(false);
       event.target.value = "";
     }
   }
 
-  return <section className="management-section file-browser"><div className="file-browser-heading"><div><h2>{title}</h2><p className="file-path">/{currentPath}</p></div><div className="file-browser-buttons">{beforeUpload}{isAdmin && <>{clearable && <button className="delete-button" type="button" disabled={!exists || isUploading} onClick={clearDirectory}>전체 삭제</button>}<input ref={uploadInput} className="visually-hidden" type="file" multiple onChange={uploadFiles} />{directoryUpload && <><input ref={directoryInput} className="visually-hidden" type="file" multiple webkitdirectory="" onChange={uploadWorldDirectory} /><button className="cancel-button" type="button" disabled={!exists || isUploading} onClick={() => directoryInput.current?.click()}>world 폴더 업로드</button></>}<button className="create-button" type="button" disabled={!exists || isUploading} onClick={() => uploadInput.current?.click()}>{isUploading ? "업로드 중..." : "파일 업로드"}</button></>}</div></div>{browserError && <p className="form-error">{browserError}</p>}{!exists ? <p className="empty-message">서버를 한 번 실행하면 이 폴더가 생성됩니다.</p> : <><div className="file-browser-actions">{currentPath && <button className="cancel-button" type="button" onClick={goUp}>← 상위 폴더</button>}</div>{entries.length === 0 ? <p className="empty-message">이 폴더는 비어 있습니다.</p> : <ul className="file-list">{entries.map((entry) => <li key={entry.path} className={entry.type === "directory" ? "directory-entry" : ""}>{entry.type === "directory" ? <button className="directory-button" type="button" onClick={() => setCurrentPath(entry.path)}>📁 {entry.name}</button> : <><span>📄 {entry.name}</span><span className="file-size">{formatSize(entry.size)}</span>{canPreviewText(entry.name) && <button className="text-preview-button" type="button" onClick={() => previewText(entry)}>보기</button>}<a href={downloadUrl(entry.path)}>다운로드</a></>}{isAdmin && <button className="delete-button" type="button" onClick={() => deleteEntry(entry)}>삭제</button>}</li>)}</ul>}</>}{textPreview && <div className="text-preview-backdrop" role="presentation" onMouseDown={() => setTextPreview(null)}><article className="text-preview-modal" role="dialog" aria-modal="true" aria-label={`${textPreview.name} 내용`} onMouseDown={(event) => event.stopPropagation()}><div><h3>{textPreview.name}</h3><button className="cancel-button" type="button" onClick={() => setTextPreview(null)}>닫기</button></div><pre>{textPreview.content}</pre></article></div>}</section>;
+  return <section className="management-section file-browser"><div className="file-browser-heading"><div><h2>{title}</h2><p className="file-path">/{currentPath}</p></div><div className="file-browser-buttons">{beforeUpload}{isAdmin && <>{clearable && <button className="delete-button" type="button" disabled={!exists || isUploading} onClick={clearDirectory}>전체 삭제</button>}<input ref={uploadInput} className="visually-hidden" type="file" multiple onChange={uploadFiles} />{directoryUpload && <><input ref={directoryInput} className="visually-hidden" type="file" multiple webkitdirectory="" onChange={uploadWorldDirectory} /><button className="cancel-button" type="button" disabled={!exists || isUploading} onClick={() => directoryInput.current?.click()}>월드 폴더 업로드</button></>}<button className="create-button" type="button" disabled={!exists || isUploading} onClick={() => uploadInput.current?.click()}>{isUploading ? "업로드 중..." : "파일 업로드"}</button></>}</div></div>{browserError && <p className="form-error">{browserError}</p>}{!exists ? <p className="empty-message">아직 폴더가 없습니다. 게임 서버를 실행하고 필요한 기능이 활성화되어 있는지 확인하세요.</p> : <><div className="file-browser-actions">{currentPath && <button className="cancel-button" type="button" onClick={goUp}>← 상위 폴더</button>}</div>{entries.length === 0 ? <p className="empty-message">이 폴더는 비어 있습니다.</p> : <ul className="file-list">{entries.map((entry) => <li key={entry.path} className={entry.type === "directory" ? "directory-entry" : ""}>{entry.type === "directory" ? <button className="directory-button" type="button" onClick={() => setCurrentPath(entry.path)}>📁 {entry.name}</button> : <><span>📄 {entry.name}</span><span className="file-size">{formatSize(entry.size)}</span>{canPreviewText(entry.name) && <button className="text-preview-button" type="button" onClick={() => previewText(entry)}>보기</button>}<a href={downloadUrl(entry.path)}>다운로드</a></>}{isAdmin && <button className="delete-button" type="button" onClick={() => deleteEntry(entry)}>삭제</button>}</li>)}</ul>}</>}{textPreview && <div className="text-preview-backdrop" role="presentation" onMouseDown={() => setTextPreview(null)}><article className="text-preview-modal" role="dialog" aria-modal="true" aria-label={`${textPreview.name} 내용`} onMouseDown={(event) => event.stopPropagation()}><div><h3>{textPreview.name}</h3><button className="cancel-button" type="button" onClick={() => setTextPreview(null)}>닫기</button></div><pre>{textPreview.content}</pre></article></div>}</section>;
 }
 
 export default InstanceDetail;
