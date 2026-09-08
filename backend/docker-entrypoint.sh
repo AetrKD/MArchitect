@@ -11,9 +11,9 @@ auth_database="${MARCHITECT_AUTH_DB:-/data/marchitect.sqlite3}"
 export MARCHITECT_AUTH_DB="$auth_database"
 auth_dir="$(dirname "$auth_database")"
 
-mkdir -p /data /java "$auth_dir"
+mkdir -p /data /java "$auth_dir" "$auth_dir/frontend-settings"
 
-for path in /data /java "$auth_dir"; do
+for path in /data /java "$auth_dir" "$auth_dir/frontend-settings"; do
     if ! chown "$uid:$gid" "$path" 2>/dev/null; then
         echo "[marchitect] warning: could not chown $path to $uid:$gid; checking actual write access instead." >&2
     fi

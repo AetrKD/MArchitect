@@ -10,6 +10,7 @@ from modules.server_catalog import router as server_catalog_router
 from modules.task_store import router as tasks_router
 from modules.system_metrics import router as system_metrics_router
 from modules.auth import initialize_auth_database, router as auth_router, session_role
+from modules.domain_settings import router as domain_settings_router, sync_domain_settings
 
 app = FastAPI()
 
@@ -45,12 +46,14 @@ app.include_router(server_catalog_router)
 app.include_router(tasks_router)
 app.include_router(system_metrics_router)
 app.include_router(auth_router)
+app.include_router(domain_settings_router)
 
 
 @app.on_event("startup")
 async def prepare_auth_database():
     """서버 시작 전에 접근 코드용 SQLite 데이터베이스를 준비합니다."""
     await initialize_auth_database()
+    sync_domain_settings()
 
 
 @app.get("/")

@@ -34,7 +34,9 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+      - ./data/frontend-settings:/etc/marchitect:ro
     environment:
       CHOKIDAR_USEPOLLING: "true"
+      MARCHITECT_DOMAIN_SETTINGS_FILE: /etc/marchitect/domains.json
     depends_on:
       - backend

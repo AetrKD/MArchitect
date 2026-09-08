@@ -45,6 +45,24 @@ The development backend API is published at `http://localhost:8800`. The fronten
 production Compose files. After changing it, recreate the containers so Docker
 applies the new port mapping.
 
+### Custom domains
+
+Sign in as an administrator using the server IP address, then open **Server
+settings → Custom domains**. Enter one domain per line without a scheme,
+port, or path. Only administrators can read or save this list. Domains and IP addresses persist in the SQLite `settings` table under
+`allowed_hosts`. The backend exports `data/frontend-settings/domains.json`
+for Vite and recreates it from the DB on startup. No `.env` domain setting is needed.
+
+The development frontend mounts only this settings directory read-only and
+reloads its host list automatically within a few seconds. Connections may
+briefly reconnect. Removing a domain revokes development access through it;
+IP and localhost access remain available for recovery. Recreate the frontend
+once after this update to install the new mount: `docker compose up -d --build
+--force-recreate frontend` (run this command on one line).
+
+Production Nginx already accepts custom domains; this list is not a production
+access-control mechanism. DNS must point to your server, and your HTTPS proxy
+must forward traffic and WebSockets to the configured web port.
 ### Data directory ownership
 
 At startup, the backend first tries to assign the `/data` and `/java`

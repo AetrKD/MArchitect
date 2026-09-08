@@ -1,5 +1,14 @@
 // 화면에 남아 있는 문구를 한곳에서 관리하는 한국어→영어 번역 사전입니다.
 export const ENGLISH = {
+  "접속 주소 설정": "Connection addresses",
+  "도메인 / IP 주소": "Domain / IP address",
+  "접속 주소 저장": "Save addresses",
+  "도메인을 저장했습니다. 잠시 후 적용됩니다.": "Addresses saved. Changes will apply shortly.",
+  "도메인 설정을 불러오지 못했습니다. 페이지를 새로고침해 주세요.": "Could not load addresses. Please refresh the page.",
+  "도메인 형식을 확인해 주세요. https://, 포트, 경로는 제외하세요.": "Check the address format. Omit https://, ports, and paths.",
+  "처음에는 서버 IP 주소로 접속해 도메인을 등록하세요. DNS와 HTTPS 연결은 별도로 설정해야 합니다.": "Connect using the server IP to register a domain. Configure DNS and HTTPS separately.",
+  "도메인 또는 IP 주소를 한 줄에 하나씩 입력하세요. SQLite DB에 저장됩니다. 비우면 등록한 도메인이 삭제됩니다. IP 주소로는 계속 접속할 수 있습니다.": "Enter one domain or IP address per line. Addresses are stored in SQLite. Clear the list to remove registered addresses. IP access remains available.",
+  "개발용 서버에는 자동 적용되며 잠시 연결이 끊길 수 있습니다. 운영용 서버는 이미 모든 도메인의 접속을 허용합니다.": "Development settings apply automatically and may briefly interrupt the connection. Production already accepts all domains.",
   "홈": "Home", "인스턴스 목록": "Instances", "서버 설정": "Server settings", "사용자 관리": "User management", "Java 관리": "Java runtimes", "언어": "Language", "라이트 모드": "Light mode", "관리자": "Administrator", "사용자": "User",
   "로그아웃": "Log out", "입장하기": "Sign in", "확인 중...": "Checking...", "접근 코드": "Access code", "접근 코드 입력": "Enter access code", "유효하지 않은 접근 코드입니다.": "Invalid access code.",
   "서버 관리 로그인": "Server management login", "부여받은 접근 코드 하나를 입력해 계속하세요.": "Enter the access code you received to continue.",
