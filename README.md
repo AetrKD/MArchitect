@@ -47,12 +47,15 @@ applies the new port mapping.
 
 ### Data directory ownership
 
-At startup, the backend assigns the `/data` and `/java` mount roots to
-`MARCHITECT_UID:MARCHITECT_GID` (default: `1000:1000`) and then runs as that
-user. This also handles a missing `data` directory that Docker initially
-creates as root. Set both values in `.env` from `id -u` and `id -g`. For an
-existing deployment with root-owned files inside those directories, migrate
-them once:
+At startup, the backend first tries to assign the `/data` and `/java`
+mounts to `MARCHITECT_UID:MARCHITECT_GID` (default: `1000:1000`) and runs as
+that user when the mounts are writable. Some bind-mount implementations
+(rootless Docker, Docker Desktop, or root-squashed network filesystems) reject
+`chown`; in that case the entrypoint verifies actual write access and falls
+back to the current container user instead of exiting before SQLite can create
+`data/marchitect.sqlite3`. Set both IDs in `.env` from `id -u` and `id -g`.
+For an existing deployment with root-owned files inside those directories,
+migrate them once:
 
 ```bash
 sudo chown -R "$(id -u):$(id -g)" data backend/JAVA
@@ -133,6 +136,24 @@ This project is licensed under the [MIT License](LICENSE).
 `data/marchitect.sqlite3`가 이미 존재한다면 `.env`의 초기 코드를 변경해도 기존 코드는 바뀌지 않습니다.
 
 개발 환경의 백엔드 API는 `http://localhost:8800`에 공개되며, 프론트엔드는 `/api` 경로를 통해 백엔드에 연결됩니다.
+
+### 데이터 디렉터리 권한
+
+백엔드는 시작할 때 `/data`와 `/java`를 먼저
+`MARCHITECT_UID:MARCHITECT_GID`(기본값 `1000:1000`)로 사용할 수 있도록
+조정한 뒤 해당 사용자로 실행합니다. rootless Docker, Docker Desktop,
+root-squash가 적용된 네트워크 파일시스템처럼 bind mount가 `chown`을
+허용하지 않는 환경에서는 실제 쓰기 가능 여부를 검사하고, SQLite가
+`data/marchitect.sqlite3`를 만들기도 전에 종료되지 않도록 현재 컨테이너
+사용자로 실행을 이어갑니다. Linux에서는 `.env`의 UID/GID를
+`id -u`, `id -g` 결과와 맞추는 것을 권장합니다.
+
+기존 배포에 root 소유 파일이 남아 있다면 한 번만 다음 명령으로
+정리할 수 있습니다.
+
+```bash
+sudo chown -R "$(id -u):$(id -g)" data backend/JAVA
+```
 
 ## 데이터 보존 위치
 
