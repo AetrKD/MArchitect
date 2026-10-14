@@ -7,6 +7,7 @@ SOURCE_SHA=${SOURCE_SHA:-${GITHUB_SHA:-}}
 for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS DEPLOY_PATH DEPLOY_PROJECT; do
   [[ -n "${!name:-}" ]] || fail "Missing $name"
 done
+# shellcheck disable=SC2153 # Required external input is checked indirectly above.
 [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.:-]*$ ]] || fail "Invalid host"
 [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || fail "Invalid SSH user"
 [[ "${DEPLOY_PORT:=22}" =~ ^[0-9]+$ ]] || fail "Invalid SSH port"

@@ -27,6 +27,12 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Prepare isolated data
+        id: prepare
+        run: |
+          echo "MARCHITECT_DATA_DIR=$RUNNER_TEMP/marchitect-ci/data" >> "$GITHUB_ENV"
+          echo "MARCHITECT_JAVA_DIR=$RUNNER_TEMP/marchitect-ci/java" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/marchitect-ci/data" "$RUNNER_TEMP/marchitect-ci/java"
       - name: Validate Actions workflows
         run: go run github.com/rhysd/actionlint/cmd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106 .github/workflows/ci.yml deployment/private-repo/.github/workflows/deploy.yml
       - name: Check deployment scripts
@@ -35,11 +41,6 @@ jobs:
           bash -n scripts/deploy.sh
           shellcheck scripts/ci-deploy.sh scripts/deploy.sh
           python3 -m unittest discover -s tests -v
-      - name: Prepare isolated data and validate Compose
-        run: |
-          echo "MARCHITECT_DATA_DIR=$RUNNER_TEMP/marchitect-ci/data" >> "$GITHUB_ENV"
-          echo "MARCHITECT_JAVA_DIR=$RUNNER_TEMP/marchitect-ci/java" >> "$GITHUB_ENV"
-          mkdir -p "$RUNNER_TEMP/marchitect-ci/data" "$RUNNER_TEMP/marchitect-ci/java"
       - name: Build production images
         run: |
           docker compose -p marchitect-ci -f docker-compose.deploy.yml config --quiet
@@ -54,8 +55,8 @@ jobs:
           curl --fail --silent http://127.0.0.1:5173/ > /dev/null
           curl --fail --silent http://127.0.0.1:5173/api/ | python3 -c 'import json,sys; assert json.load(sys.stdin)["message"] == "MArchitect API is running"'
       - name: Show service status
-        if: failure()
+        if: failure() && steps.prepare.outcome == 'success'
         run: docker compose -p marchitect-ci -f docker-compose.deploy.yml ps -a
       - name: Clean up CI containers
-        if: always()
+        if: always() && steps.prepare.outcome == 'success'
         run: docker compose -p marchitect-ci -f docker-compose.deploy.yml down
