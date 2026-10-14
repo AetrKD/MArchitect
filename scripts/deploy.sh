@@ -101,10 +101,22 @@ if [[ -n "$running_ids" ]]; then
   fi
 fi
 
-# First migration: retain the local production Compose file as a fallback.
+# First migration: snapshot the actual Compose stack recorded on the old container.
 legacy=false
+legacy_args=()
 if [[ -z "$previous" && -n "$backend_ids" ]]; then
-  [[ -f "$deploy_root/docker-compose.production.yml" ]] || fail "Existing installation has no rollback Compose file"
+  config_files=$(docker inspect "$backend_ids" --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}')
+  [[ -n "$config_files" && "$config_files" != "<no value>" ]] || fail "Existing installation has no recorded Compose files"
+  IFS=',' read -r -a config_paths <<< "$config_files"
+  legacy_index=0
+  for config_path in "${config_paths[@]}"; do
+    config_path=$(realpath -e -- "$config_path")
+    [[ "$config_path" == "$deploy_root/"* && -f "$config_path" ]] || fail "Existing Compose files must be inside DEPLOY_PATH"
+    snapshot="$release_dir/legacy-compose-$legacy_index.yml"
+    cp -- "$config_path" "$snapshot"
+    legacy_args+=(-f "$snapshot")
+    legacy_index=$((legacy_index + 1))
+  done
   frontend_id=$(docker ps -aq --filter "label=com.docker.compose.project=$project" --filter label=com.docker.compose.service=frontend)
   [[ -n "$frontend_id" && "$frontend_id" != *$'\n'* ]] || fail "Cannot snapshot the previous frontend"
   backend_image=$(docker inspect "$backend_ids" --format '{{.Image}}')
@@ -132,8 +144,8 @@ rollback() {
       fi
     elif [[ "$legacy" == true ]]; then
       if docker compose -p "$project" --project-directory "$deploy_root" --env-file "$deploy_root/.env" \
-        -f "$deploy_root/docker-compose.production.yml" -f "$deploy_root/releases/$release/legacy-images.yml" up -d --no-build --force-recreate --wait --wait-timeout 120; then
-        echo "Previous local production installation restored; verify it manually." >&2
+        "${legacy_args[@]}" -f "$deploy_root/releases/$release/legacy-images.yml" up -d --no-build --force-recreate --wait --wait-timeout 120; then
+        echo "Previous Compose installation restored; verify it manually." >&2
       else
         echo "Migration rollback failed; inspect the server before retrying." >&2
       fi

@@ -4,9 +4,14 @@ umask 077
 
 fail() { echo "Deployment configuration: $*" >&2; exit 1; }
 SOURCE_SHA=${SOURCE_SHA:-${GITHUB_SHA:-}}
-for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS DEPLOY_PATH DEPLOY_PROJECT; do
+for name in DEPLOY_HOST DEPLOY_USER DEPLOY_KNOWN_HOSTS DEPLOY_PATH DEPLOY_PROJECT; do
   [[ -n "${!name:-}" ]] || fail "Missing $name"
 done
+if [[ -n "${DEPLOY_SSH_KEY_PATH:-}" ]]; then
+  [[ "$DEPLOY_SSH_KEY_PATH" == /* && -f "$DEPLOY_SSH_KEY_PATH" && -r "$DEPLOY_SSH_KEY_PATH" ]] || fail "The VM deployment key is missing or unreadable"
+else
+  [[ -n "${DEPLOY_SSH_KEY:-}" ]] || fail "Set DEPLOY_SSH_KEY_PATH or DEPLOY_SSH_KEY"
+fi
 # shellcheck disable=SC2153 # Required external input is checked indirectly above.
 [[ "$DEPLOY_HOST" =~ ^[a-zA-Z0-9][a-zA-Z0-9.:-]*$ ]] || fail "Invalid host"
 [[ "$DEPLOY_USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || fail "Invalid SSH user"
@@ -30,10 +35,15 @@ fi
 ssh_dir=$(mktemp -d "$RUNNER_TEMP/marchitect-ssh.XXXXXX")
 cleanup() { rm -f -- "$ssh_dir/key" "$ssh_dir/known_hosts" "$ssh_dir/release.tar"; rmdir -- "$ssh_dir"; }
 trap cleanup EXIT
-printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/key"
+if [[ -n "${DEPLOY_SSH_KEY_PATH:-}" ]]; then
+  cp -- "$DEPLOY_SSH_KEY_PATH" "$ssh_dir/key"
+else
+  printf '%s\n' "$DEPLOY_SSH_KEY" > "$ssh_dir/key"
+fi
 printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
 unset DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS
 chmod 600 "$ssh_dir/key" "$ssh_dir/known_hosts"
+ssh-keygen -y -P '' -f "$ssh_dir/key" > /dev/null 2>&1 || fail "The deployment key is invalid or requires a passphrase"
 # Do not discover and trust host keys during deployment.
 ssh_opts=(-i "$ssh_dir/key" -p "$DEPLOY_PORT" -o BatchMode=yes
   -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes

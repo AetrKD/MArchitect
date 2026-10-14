@@ -30,6 +30,8 @@ elif args and args[0] == "ps":
 elif args and args[0] == "inspect":
     if ".State.Status" in args[-1]:
         print("running healthy\nrunning healthy")
+    elif "project.config_files" in args[-1]:
+        print(os.environ.get("LEGACY_COMPOSE_FILES", str(root / "docker-compose.production.yml")))
     elif args[-1] == "{{.Image}}":
         print("sha256:old-image")
     else:
@@ -199,6 +201,33 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(len(ups), 2)
         self.assertTrue(any("legacy-images.yml" in arg for arg in ups[-1]["args"]))
         self.assert_data_preserved()
+
+    def test_development_stack_rollback_preserves_original_configuration(self):
+        self.env["EXISTING"] = "1"
+        development = self.root / "docker-compose.yml"
+        original = "services:\n  frontend:\n    ports: ['5173:5173']\n"
+        development.write_text(original)
+        result = self.run_deploy(FAIL_RELEASE=CURRENT, LEGACY_COMPOSE_FILES=str(development))
+        self.assertNotEqual(result.returncode, 0)
+        snapshot = self.root / "releases" / CURRENT / "legacy-compose-0.yml"
+        self.assertEqual(snapshot.read_text(), original)
+        rollback = [c for c in self.calls() if "up" in c["args"]][-1]
+        self.assertIn(str(snapshot), rollback["args"])
+        self.assert_data_preserved()
+
+    def test_rollback_preserves_multiple_compose_files_in_order(self):
+        self.env["EXISTING"] = "1"
+        base, override = self.root / "compose.yml", self.root / "override.yml"
+        base.write_text("services: {}\n")
+        override.write_text("services: {frontend: {ports: ['5173:5173']}}\n")
+        result = self.run_deploy(FAIL_RELEASE=CURRENT, LEGACY_COMPOSE_FILES=f"{base},{override}")
+        self.assertNotEqual(result.returncode, 0)
+        folder = self.root / "releases" / CURRENT
+        snapshot0, snapshot1 = folder / "legacy-compose-0.yml", folder / "legacy-compose-1.yml"
+        self.assertEqual(snapshot0.read_text(), base.read_text())
+        self.assertEqual(snapshot1.read_text(), override.read_text())
+        rollback = [c for c in self.calls() if "up" in c["args"]][-1]["args"]
+        self.assertLess(rollback.index(str(snapshot0)), rollback.index(str(snapshot1)))
 
     def test_example_admin_code_is_rejected_without_logging_it(self):
         result = self.run_deploy(ADMIN_CODE="replace-with-a-long-unique-admin-code")
