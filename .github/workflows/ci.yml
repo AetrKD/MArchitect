@@ -52,6 +52,8 @@ jobs:
       - name: Smoke test the web console and API
         run: |
           docker compose -p marchitect-ci -f docker-compose.deploy.yml up -d --no-build --wait --wait-timeout 120
+          backend=$(docker compose -p marchitect-ci -f docker-compose.deploy.yml ps --quiet backend)
+          docker top "$backend" -eo pid,comm
           curl --fail --silent http://127.0.0.1:5173/ > /dev/null
           curl --fail --silent http://127.0.0.1:5173/api/ | python3 -c 'import json,sys; assert json.load(sys.stdin)["message"] == "MArchitect API is running"'
       - name: Show service status

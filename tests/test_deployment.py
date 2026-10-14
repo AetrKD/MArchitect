@@ -43,9 +43,9 @@ elif args and args[0] == "inspect":
 elif args and args[0] in {"stop", "start"}:
     pass
 elif args and args[0] == "top":
-    print("COMMAND")
+    print("PID COMMAND")
     tops = len([json.loads(line) for line in (root / "docker-calls.jsonl").read_text().splitlines() if json.loads(line)["args"][0] == "top"])
-    print("java" if os.environ.get("LIVE_GAME") or (os.environ.get("RACING_GAME") and tops > 1) else "uvicorn")
+    print("42 java" if os.environ.get("LIVE_GAME") or (os.environ.get("RACING_GAME") and tops > 1) else "1 uvicorn")
 elif args and args[0] == "compose":
     if "config" in args:
         if "--format" in args:

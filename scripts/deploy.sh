@@ -95,8 +95,8 @@ fi
 
 running_ids=$(docker ps -q --filter "label=com.docker.compose.project=$project" --filter label=com.docker.compose.service=backend)
 if [[ -n "$running_ids" ]]; then
-  processes=$(docker top "$running_ids" -eo comm)
-  if awk 'NR > 1 && $1 ~ /^java/ {found=1} END {exit !found}' <<< "$processes"; then
+  processes=$(docker top "$running_ids" -eo pid,comm)
+  if awk 'NR > 1 && $2 ~ /^java/ {found=1} END {exit !found}' <<< "$processes"; then
     fail "Minecraft is running. Stop game servers normally in the web console and retry"
   fi
 fi
@@ -172,8 +172,8 @@ if [[ -n "$frontend_running" ]]; then
   docker stop --time 15 "$frontend_running" > /dev/null
 fi
 if [[ -n "$running_ids" ]]; then
-  processes=$(docker top "$running_ids" -eo comm)
-  if awk 'NR > 1 && $1 ~ /^java/ {found=1} END {exit !found}' <<< "$processes"; then
+  processes=$(docker top "$running_ids" -eo pid,comm)
+  if awk 'NR > 1 && $2 ~ /^java/ {found=1} END {exit !found}' <<< "$processes"; then
     echo "A game started during deployment preparation; restoring the web console." >&2
     false
   fi
