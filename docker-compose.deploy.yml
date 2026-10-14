@@ -1,0 +1,50 @@
+# Standalone deployment configuration; local production builds remain unchanged.
+services:
+  backend:
+    image: marchitect-backend:${MARCHITECT_RELEASE:?A release commit is required}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+    restart: unless-stopped
+    volumes:
+      - ${MARCHITECT_DATA_DIR:?An absolute data directory is required}:/data
+      - ${MARCHITECT_JAVA_DIR:?An absolute Java directory is required}:/java
+    environment:
+      MARCHITECT_INITIAL_ADMIN_CODE: ${MARCHITECT_INITIAL_ADMIN_CODE:?Set a private administrator code in the server .env}
+      MARCHITECT_INITIAL_USER_CODE: ${MARCHITECT_INITIAL_USER_CODE:-}
+      MARCHITECT_JAVA_ROOTS: /java
+      MARCHITECT_JAVA_INSTALL_DIR: /java
+      MARCHITECT_DEFAULT_JAVA_PATH: /java/21/bin/java
+      MARCHITECT_INSTANCE_DIR: /data/instances
+      MARCHITECT_AUTH_DB: /data/marchitect.sqlite3
+      MARCHITECT_UID: ${MARCHITECT_UID:-1000}
+      MARCHITECT_GID: ${MARCHITECT_GID:-1000}
+      PYTHONDONTWRITEBYTECODE: "1"
+    ports:
+      - "${MARCHITECT_MINECRAFT_PORT_RANGE:-25565-25665}:${MARCHITECT_MINECRAFT_PORT_RANGE:-25565-25665}"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/', timeout=3).read()"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  frontend:
+    image: marchitect-frontend:${MARCHITECT_RELEASE:?A release commit is required}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.production
+    restart: unless-stopped
+    ports:
+      # Use an HTTPS reverse proxy or SSH tunnel by default.
+      - "${MARCHITECT_WEB_BIND:-127.0.0.1}:${MARCHITECT_WEB_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      # Check both the web server and its route to the API.
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ && wget -q -O /dev/null http://127.0.0.1/api/"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
