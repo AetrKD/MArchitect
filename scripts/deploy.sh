@@ -50,11 +50,23 @@ compose() {
 compose config --quiet
 # Read only selected settings; never print .env or the rendered configuration.
 compose config --format json | python3 -c '
-import json, sys
+import json, os, sqlite3, sys
+from pathlib import Path
+from urllib.parse import quote
 config = json.load(sys.stdin)
 code = config["services"]["backend"]["environment"]["MARCHITECT_INITIAL_ADMIN_CODE"]
-if len(code.strip()) < 8 or code.strip() in {"ADMIN", "replace-with-a-long-unique-admin-code"}:
-    sys.exit("Set a unique administrator code of at least 8 characters in the server .env")
+initialized = False
+database = Path(os.environ["MARCHITECT_DATA_DIR"]) / "marchitect.sqlite3"
+if database.is_file():
+    try:
+        with sqlite3.connect("file:" + quote(str(database)) + "?mode=ro", uri=True) as connection:
+            initialized = connection.execute(
+                "SELECT 1 FROM settings WHERE key = ? AND value <> ?", ("admin_code_hash", "")
+            ).fetchone() is not None
+    except sqlite3.Error:
+        pass
+if not initialized and (len(code.strip()) < 8 or code.strip() in {"ADMIN", "replace-with-a-long-unique-admin-code"}):
+    sys.exit("Set a unique administrator code of at least 8 characters in the server .env for a new installation")
 '
 
 previous=""

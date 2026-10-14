@@ -1,6 +1,7 @@
 """Exercise deployment failure paths without contacting Docker or a real server."""
 import json
 import os
+import sqlite3
 from pathlib import Path
 import subprocess
 import tarfile
@@ -234,6 +235,17 @@ class DeploymentTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(any("build" in call["args"] for call in self.calls()))
         self.assertNotIn("replace-with-a-long-unique-admin-code", result.stdout + result.stderr)
+
+    def test_existing_administrator_is_preserved_with_an_old_seed_code(self):
+        database = self.root / "data/marchitect.sqlite3"
+        with sqlite3.connect(database) as connection:
+            connection.execute("CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+            connection.execute("INSERT INTO settings VALUES (?, ?)", ("admin_code_hash", "existing-hash"))
+        result = self.run_deploy(ADMIN_CODE="ADMIN")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        with sqlite3.connect(database) as connection:
+            self.assertEqual(connection.execute("SELECT value FROM settings WHERE key = 'admin_code_hash'").fetchone(), ("existing-hash",))
+        self.assert_data_preserved()
 
     def test_missing_env_refuses_without_replacing_containers(self):
         (self.root / ".env").unlink()
