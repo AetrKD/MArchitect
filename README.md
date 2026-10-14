@@ -76,6 +76,10 @@ Docker와 Docker Compose가 설치되어 있어야 합니다. Windows에서는 D
 
 **서버 설정 → 접속 주소 설정**에서 도메인과 IP 주소를 저장할 수 있습니다. 한 줄에 하나씩 입력하고 `https://`, 포트, 경로는 제외하세요. 저장된 주소는 재시작 후에도 유지됩니다. 이 메뉴는 DNS나 인증서를 설정하지 않으며, 접속자를 제한하는 기능도 아닙니다. 운영용 실행에서는 별도 등록 없이 도메인으로 접속할 수 있습니다.
 
+### 자동 배포
+
+GitHub Actions로 개인 Linux 서버에 자동 배포하려면 [자동 배포 안내](docs/automatic-deployment.md)를 따르세요. 공개 저장소의 CI와 비공개 저장소의 내부망 배포 실행기를 분리하고, 기존 데이터와 Java를 유지합니다.
+
 ### 업데이트와 백업
 
 게임 서버를 정상 종료하고 진행 중인 다운로드·설치가 끝날 때까지 기다리세요. 일관된 백업을 위해 MArchitect도 정지한 뒤 `.env`와 `data/` 폴더를 복사해 보관하세요. 필요하면 다운로드한 Java가 있는 `backend/JAVA/`도 함께 보관하세요.
@@ -177,6 +181,10 @@ Choose a port within the range set in `.env`. To use a port outside that range, 
 Point your domain's DNS to the server and route traffic to the web console port. HTTPS requires a certificate and a separately configured HTTPS proxy. Allow WebSocket connections through the proxy to use the live console.
 
 Save domains and IP addresses in **Server settings → Connection addresses**. Enter one per line, without `https://`, a port, or a path. Saved addresses remain after a restart. This menu does not configure DNS or certificates, or restrict who can connect. The production setup accepts domains without registration.
+
+### Automatic deployment
+
+See the [deployment guide](docs/automatic-deployment.md) for GitHub Actions deployment to a personal Linux server. Public-repository CI is separated from a private control repository and a LAN runner; existing data and Java runtimes stay on the server.
 
 ### Updates and backups
 

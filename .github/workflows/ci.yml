@@ -1,0 +1,61 @@
+name: MArchitect CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  ci:
+    name: Test production containers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      MARCHITECT_RELEASE: ci
+      MARCHITECT_INITIAL_ADMIN_CODE: ci-only-admin-code-not-for-production
+      MARCHITECT_MINECRAFT_PORT_RANGE: "25565-25565"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate Actions workflows
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106 .github/workflows/ci.yml deployment/private-repo/.github/workflows/deploy.yml
+      - name: Check deployment scripts
+        run: |
+          bash -n scripts/ci-deploy.sh
+          bash -n scripts/deploy.sh
+          shellcheck scripts/ci-deploy.sh scripts/deploy.sh
+          python3 -m unittest discover -s tests -v
+      - name: Prepare isolated data and validate Compose
+        run: |
+          echo "MARCHITECT_DATA_DIR=$RUNNER_TEMP/marchitect-ci/data" >> "$GITHUB_ENV"
+          echo "MARCHITECT_JAVA_DIR=$RUNNER_TEMP/marchitect-ci/java" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/marchitect-ci/data" "$RUNNER_TEMP/marchitect-ci/java"
+      - name: Build production images
+        run: |
+          docker compose -p marchitect-ci -f docker-compose.deploy.yml config --quiet
+          docker compose -p marchitect-ci -f docker-compose.deploy.yml build --pull
+      - name: Run existing application tests
+        run: |
+          docker run --rm --entrypoint python marchitect-backend:ci -m unittest discover -s tests -v
+          docker run --rm -v "$PWD/frontend:/app:ro" -w /app node:22-alpine node --test domain-settings.test.js
+      - name: Smoke test the web console and API
+        run: |
+          docker compose -p marchitect-ci -f docker-compose.deploy.yml up -d --no-build --wait --wait-timeout 120
+          curl --fail --silent http://127.0.0.1:5173/ > /dev/null
+          curl --fail --silent http://127.0.0.1:5173/api/ | python3 -c 'import json,sys; assert json.load(sys.stdin)["message"] == "MArchitect API is running"'
+      - name: Show service status
+        if: failure()
+        run: docker compose -p marchitect-ci -f docker-compose.deploy.yml ps -a
+      - name: Clean up CI containers
+        if: always()
+        run: docker compose -p marchitect-ci -f docker-compose.deploy.yml down
