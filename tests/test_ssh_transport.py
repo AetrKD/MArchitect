@@ -22,11 +22,12 @@ else:
     sys.exit("Unexpected git command")
 """
 MOCK_SSH = r"""#!/usr/bin/env python3
-import hashlib, json, os, pathlib, sys
+import hashlib, json, os, pathlib, subprocess, sys
 args = sys.argv[1:]
 key = pathlib.Path(args[args.index("-i") + 1])
+public_key = subprocess.check_output(["ssh-keygen", "-y", "-P", "", "-f", str(key)]).split()[1]
 with pathlib.Path(os.environ["SSH_TEST_LOG"]).open("a") as log:
-    log.write(json.dumps({"key_hash": hashlib.sha256(key.read_bytes()).hexdigest(),
+    log.write(json.dumps({"key_hash": hashlib.sha256(public_key).hexdigest(),
                          "key_mode": key.stat().st_mode & 0o777}) + "\n")
 sys.stdin.buffer.read()
 """
@@ -70,7 +71,7 @@ class SSHTransportTests(unittest.TestCase):
     def assert_correct_key_and_cleanup(self):
         calls = [json.loads(line) for line in self.log.read_text().splitlines()]
         self.assertEqual(len(calls), 2)
-        expected = hashlib.sha256(self.original).hexdigest()
+        expected = hashlib.sha256(Path(str(self.key) + ".pub").read_bytes().split()[1]).hexdigest()
         self.assertTrue(all(call["key_hash"] == expected and call["key_mode"] == 0o600 for call in calls))
         self.assertEqual(self.key.read_bytes(), self.original)
         self.assertFalse(list(self.root.glob("marchitect-ssh.*")))
