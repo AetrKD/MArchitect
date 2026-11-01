@@ -1,6 +1,9 @@
 """Instance creation, configuration, file access and lifecycle API endpoints."""
 import asyncio
-import io
+import tempfile
+import threading
+from functools import wraps
+from starlette.background import BackgroundTask
 import mimetypes
 import os
 import re
@@ -21,6 +24,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from modules.instance_store import (
+    maintenance,
     DEFAULT_JAVA_PATH,
     DEFAULT_JVM_ARGS,
     INSTANCE_DIR,
@@ -36,7 +40,7 @@ from modules.downloads import download_remote_file
 from modules.server_catalog import fabric_download, neoforge_download_url, paper_download_url
 from modules.task_store import start_task, update_progress
 from modules.server_process import console_snapshot, force_stop, process_metrics, send_command, start as start_process, stop as stop_process, synchronize_status
-from modules.auth import require_admin, session_role
+from modules.auth import require_admin, require_authenticated, session_role
 
 router = APIRouter(prefix="/instances", tags=["instances"])
 MAX_JAR_SIZE_BYTES = 200 * 1024 * 1024
@@ -67,6 +71,15 @@ class NameListUpdate(BaseModel):
 
 
 StorageArea = Literal["world", "mods", "plugins", "config", "logs"]
+
+
+def stopped_operation(function):
+    @wraps(function)
+    async def guarded(*args, **kwargs):
+        instance_id = kwargs.get("instance_id", args[0] if args else None)
+        with maintenance(get_instance_path(instance_id)):
+            return await function(*args, **kwargs)
+    return guarded
 
 
 def storage_root(instance_path: Path, area: StorageArea) -> Path:
@@ -142,6 +155,8 @@ async def install_neoforge_server(instance_path: Path, instance: dict, installer
     if task_record:
         update_progress(task_record, 55, "NeoForge 설치 프로그램을 시작하는 중입니다.", indeterminate=True)
 
+    cancelled = threading.Event()
+
     def run_installer() -> subprocess.CompletedProcess:
         """이벤트 루프를 막지 않도록 NeoForge 설치기를 별도 작업에서 실행합니다."""
         process = subprocess.Popen(
@@ -157,8 +172,10 @@ async def install_neoforge_server(instance_path: Path, instance: dict, installer
         with selectors.DefaultSelector() as selector:
             selector.register(process.stdout, selectors.EVENT_READ)
             while process.poll() is None:
-                if time.monotonic() >= deadline:
+                if cancelled.is_set() or time.monotonic() >= deadline:
                     process.kill()
+                    process.wait()
+                    process.stdout.close()
                     raise subprocess.TimeoutExpired(process.args, 900)
                 for _, _ in selector.select(timeout=1):
                     raw_line = process.stdout.readline()
@@ -175,7 +192,13 @@ async def install_neoforge_server(instance_path: Path, instance: dict, installer
         return subprocess.CompletedProcess(process.args, return_code, "".join(output_lines), "")
 
     try:
-        result = await asyncio.to_thread(run_installer)
+        worker = asyncio.create_task(asyncio.to_thread(run_installer))
+        try:
+            result = await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            cancelled.set()
+            await asyncio.gather(worker, return_exceptions=True)
+            raise
     except subprocess.TimeoutExpired as error:
         raise HTTPException(status_code=status.HTTP_504_GATEWAY_TIMEOUT, detail="NeoForge 서버 설치 시간이 초과되었습니다.") from error
     except OSError as error:
@@ -239,11 +262,13 @@ async def list_instances():
     instances = []
     for instance_path in INSTANCE_DIR.iterdir():
         metadata_path = instance_path / "instance.json"
-        if not instance_path.is_dir() or not metadata_path.is_file():
+        if instance_path.name.startswith(".") or not instance_path.is_dir() or not metadata_path.is_file():
             continue
         try:
             instance = synchronize_status(instance_path)
             instance["resource_metrics"] = process_metrics(instance["id"])
+            from modules.instance_rules import is_start_restricted
+            instance["start_restricted"] = is_start_restricted(instance_path)
             instances.append(instance)
         except (OSError, ValueError):
             continue
@@ -263,7 +288,7 @@ async def create_instance(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="JAR 파일만 업로드할 수 있습니다.")
 
     instance_id = uuid4().hex
-    instance_path = INSTANCE_DIR / instance_id
+    instance_path = INSTANCE_DIR / (".install-" + instance_id)
     instance_path.mkdir()
     jar_filename = Path(jar_file.filename).name
     jar_path = instance_path / jar_filename
@@ -294,8 +319,9 @@ async def create_instance(
         }
         write_instance(instance_path, instance)
         write_run_script(instance_path, instance)
+        instance_path.rename(INSTANCE_DIR / instance_id)
         return instance
-    except Exception:
+    except BaseException:
         shutil.rmtree(instance_path, ignore_errors=True)
         raise
     finally:
@@ -338,7 +364,7 @@ async def create_catalog_instance(request: CatalogInstanceRequest, task_record: 
         source_metadata = {"minecraft_version": request.minecraft_version, "neoforge_version": request.neoforge_version, "installation_required": True}
 
     instance_id = uuid4().hex
-    instance_path = INSTANCE_DIR / instance_id
+    instance_path = INSTANCE_DIR / (".install-" + instance_id)
     instance_path.mkdir()
     try:
         downloaded_path, jar_size = await download_remote_file(
@@ -369,8 +395,9 @@ async def create_catalog_instance(request: CatalogInstanceRequest, task_record: 
             await install_neoforge_server(instance_path, instance, downloaded_path, task_record)
         else:
             write_run_script(instance_path, instance)
+        instance_path.rename(INSTANCE_DIR / instance_id)
         return instance
-    except Exception:
+    except BaseException:
         shutil.rmtree(instance_path, ignore_errors=True)
         raise
 
@@ -416,6 +443,7 @@ async def upload_server_icon(instance_id: str, icon_file: UploadFile = File(...)
 
 
 @router.delete("/{instance_id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
+@stopped_operation
 async def delete_instance(instance_id: str):
     """정지된 인스턴스와 폴더 안의 모든 서버 파일을 삭제합니다."""
     instance_path = get_instance_path(instance_id)
@@ -574,6 +602,7 @@ async def download_storage_file(instance_id: str, area: StorageArea, file_path: 
 
 
 @router.post("/{instance_id}/storage/{area}/upload", dependencies=[Depends(require_admin)])
+@stopped_operation
 async def upload_storage_files(
     instance_id: str,
     area: StorageArea,
@@ -606,6 +635,7 @@ async def upload_storage_files(
 
 
 @router.post("/{instance_id}/storage/world/upload-directory", dependencies=[Depends(require_admin)])
+@stopped_operation
 async def upload_world_directory(instance_id: str, files: list[UploadFile] = File(...), path: str = ""):
     """브라우저에서 선택한 world 폴더 구조를 하위 경로까지 유지해 업로드합니다."""
     root = storage_root(get_instance_path(instance_id), "world")
@@ -641,6 +671,7 @@ async def upload_world_directory(instance_id: str, files: list[UploadFile] = Fil
 
 
 @router.delete("/{instance_id}/storage/{area}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
+@stopped_operation
 async def clear_storage_directory(instance_id: str, area: StorageArea):
     """최상위 월드·모드·플러그인 폴더는 남기고 내부만 비웁니다."""
     if area == "logs":
@@ -656,6 +687,7 @@ async def clear_storage_directory(instance_id: str, area: StorageArea):
 
 
 @router.delete("/{instance_id}/storage/{area}/{file_path:path}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[Depends(require_admin)])
+@stopped_operation
 async def delete_storage_entry(instance_id: str, area: StorageArea, file_path: str):
     """허용된 탐색기 폴더 안에서만 선택한 파일 또는 폴더를 삭제합니다."""
     target_path = safe_file_path(get_instance_path(instance_id), area, file_path)
@@ -675,21 +707,43 @@ async def get_extensions(instance_id: str):
 
 
 @router.get("/{instance_id}/world/download")
+@stopped_operation
 async def download_world(instance_id: str):
     """world 폴더 전체를 포함한 ZIP 파일을 만들어 다운로드합니다."""
     source = get_instance_path(instance_id) / "world"
     if not source.is_dir():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="아직 생성된 world 폴더가 없습니다.")
-    archive = io.BytesIO()
-    with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for file_path in source.rglob("*"):
-            if file_path.is_file(): zip_file.write(file_path, file_path.relative_to(source.parent))
-    archive.seek(0)
-    return StreamingResponse(archive, media_type="application/zip", headers={"Content-Disposition": 'attachment; filename="world.zip"'})
+    descriptor, filename = tempfile.mkstemp(prefix="marchitect-world-", suffix=".zip")
+    os.close(descriptor)
+    def build_archive():
+        with zipfile.ZipFile(filename, "w", zipfile.ZIP_DEFLATED) as archive:
+            for file_path in source.rglob("*"):
+                if file_path.is_symlink():
+                    continue
+                if file_path.is_file():
+                    resolved = file_path.resolve()
+                    if resolved.is_relative_to(source.resolve()):
+                        archive.write(file_path, file_path.relative_to(source.parent))
+    try:
+        worker = asyncio.create_task(asyncio.to_thread(build_archive))
+        try:
+            await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            await worker
+            raise
+        return FileResponse(filename, media_type="application/zip", filename="world.zip",
+                            background=BackgroundTask(Path(filename).unlink, missing_ok=True))
+    except BaseException:
+        Path(filename).unlink(missing_ok=True)
+        raise
+
 
 
 @router.post("/{instance_id}/start")
-async def start_instance(instance_id: str):
+async def start_instance(instance_id: str, role: str = Depends(require_authenticated)):
+    from modules.instance_rules import is_start_restricted
+    if role == "user" and is_start_restricted(get_instance_path(instance_id)):
+        raise HTTPException(403, "현재는 일반 사용자 서버 시작 제한 시간입니다.")
     """인스턴스 전용 폴더에서 생성된 run.sh를 실행합니다."""
     return start_process(get_instance_path(instance_id))
 
@@ -715,22 +769,27 @@ async def console_socket(websocket: WebSocket, instance_id: str, token: str | No
         await websocket.close(code=1008)
         return
     sent = 0
+    previous_lines = []
     try:
         while True:
             total, lines = console_snapshot(instance_id)
-            # The buffer retains only 500 lines, while `total` keeps growing.
-            # Translate the client cursor into the current buffer window so
-            # the live console continues after the buffer first fills.
-            first_buffered = max(total - len(lines), 0)
-            if total < sent:  # A server restart reset the in-memory console.
-                sent = 0
-            sent = max(sent, first_buffered)
-            for line in lines[sent - first_buffered:]:
-                await websocket.send_json({"type": "log", "line": line})
-            sent = total
+            if session_role(token) != role:
+                await websocket.close(code=1008)
+                return
+            if total != sent:
+                overlap = 0
+                if total >= sent:
+                    for count in range(min(len(previous_lines), len(lines)), 0, -1):
+                        if previous_lines[-count:] == lines[:count]:
+                            overlap = count
+                            break
+                for line in lines[overlap:]:
+                    await websocket.send_json({"type": "log", "line": line})
+                previous_lines = lines
+                sent = total
             try:
                 command = await asyncio.wait_for(websocket.receive_text(), timeout=0.5)
-                await websocket.send_json({"type": "command", "accepted": role == "admin" and send_command(instance_id, command)})
+                await websocket.send_json({"type": "command", "accepted": session_role(token) == "admin" and send_command(instance_id, command)})
             except asyncio.TimeoutError:
                 continue
     except WebSocketDisconnect:

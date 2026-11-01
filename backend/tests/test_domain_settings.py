@@ -1,4 +1,5 @@
 import sqlite3
+import time
 from contextlib import closing
 from pathlib import Path
 import tempfile
@@ -22,7 +23,7 @@ class DomainSettingsTests(unittest.TestCase):
             app = FastAPI()
             app.include_router(domain_settings.router)
             with patch.object(domain_settings, "AUTH_DATABASE", db_path), patch.object(domain_settings, "SETTINGS_FILE", path), patch.dict(
-                SESSIONS, {"admin-test": "admin", "user-test": "user"}
+                SESSIONS, {"admin-test": {"role": "admin", "expires": time.monotonic() + 3600}, "user-test": {"role": "user", "expires": time.monotonic() + 3600}}
             ), TestClient(app) as client:
                 admin = {"X-MArchitect-Token": "admin-test"}
                 self.assertEqual(client.get("/settings/domains").status_code, 401)
@@ -48,7 +49,7 @@ class DomainSettingsTests(unittest.TestCase):
                 db.commit()
             app = FastAPI()
             app.include_router(domain_settings.router)
-            with patch.object(domain_settings, "AUTH_DATABASE", db_path), patch.object(domain_settings, "SETTINGS_FILE", path), patch.dict(SESSIONS, {"admin-test": "admin"}), TestClient(app) as client:
+            with patch.object(domain_settings, "AUTH_DATABASE", db_path), patch.object(domain_settings, "SETTINGS_FILE", path), patch.dict(SESSIONS, {"admin-test": {"role": "admin", "expires": time.monotonic() + 3600}}), TestClient(app) as client:
                 self.assertEqual(client.put("/settings/domains", headers={"X-MArchitect-Token": "admin-test"}, json={"domains": ["192.168.1.10", "2001:db8::1", "panel.example.com"]}).status_code, 200)
                 path.unlink()
                 domain_settings.sync_domain_settings()

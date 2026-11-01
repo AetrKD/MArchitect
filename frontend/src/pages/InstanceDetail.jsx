@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import api, { apiFileUrl, apiWebSocketUrl } from "../lib/api.js";
+import InstanceRules from "../components/InstanceRules.jsx";
 const NAV_ITEMS = [
+  ["rules", "규칙"],
   ["overview", "개요"],
   ["settings", "설정"],
   ["instance-settings", "서버 정보"],
@@ -208,12 +210,15 @@ function InstanceDetail({ instance, isAdmin, language, onBack, onToggleServer, o
             <h1>{instance.name}</h1>
             <p>{instance.jar_filename}</p>
           </div>
-          <div className="header-actions"><button className={isRunning ? "stop-button" : "start-button"} type="button" disabled={instance.status === "starting" || instance.status === "stopping"} onClick={changeServerState}>{instance.status === "starting" ? "서버 시작 중..." : instance.status === "stopping" ? "서버 종료 중..." : isRunning ? "서버 정지" : "서버 시작"}</button>{isAdmin && (isRunning || instance.status === "starting" || instance.status === "stopping") && <button className="delete-button force-stop-button" type="button" onClick={forceStopServer}>강제 종료</button>}</div>
+          <div className="header-actions"><button className={isRunning ? "stop-button" : "start-button"} type="button" title={!isAdmin && instance.start_restricted && !isRunning ? (isEnglish ? "Starts are restricted at this time" : "현재는 서버 시작 제한 시간입니다") : undefined} disabled={instance.status === "starting" || instance.status === "stopping" || (!isAdmin && instance.start_restricted && !isRunning)} onClick={changeServerState}>{instance.status === "starting" ? "서버 시작 중..." : instance.status === "stopping" ? "서버 종료 중..." : isRunning ? "서버 정지" : "서버 시작"}</button>{isAdmin && (isRunning || instance.status === "starting" || instance.status === "stopping") && <button className="delete-button force-stop-button" type="button" onClick={forceStopServer}>강제 종료</button>}</div>
         </div>
       </section>
 
 
       {activeTab === "overview" && <section className="management-section console-section"><h2>서버 콘솔</h2><pre ref={consoleOutput} className="server-console">{consoleLines.join("\n") || "서버 로그를 기다리는 중입니다."}</pre>{isAdmin && <form className="console-input" onSubmit={sendConsoleCommand}><input value={consoleInput} onChange={(event) => setConsoleInput(event.target.value)} placeholder="서버 명령어 입력" /><button className="create-button" type="submit">전송</button></form>}</section>}
+
+      {!isAdmin && instance.start_restricted && <p className="form-error" role="status">{isEnglish ? "Regular users cannot start this server during the restricted hours." : "현재는 이용 제한 시간으로 일반 사용자는 서버를 시작할 수 없습니다."}</p>}
+      {activeTab === "rules" && isAdmin && <InstanceRules instanceId={instance.id} language={language} onNotify={onNotify} />}
 
       {activeTab === "settings" && (<>
         <section className="management-section">

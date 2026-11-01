@@ -4,3 +4,5 @@ starlette
 aiosqlite
 python-multipart
 httpx
+
+tzdata

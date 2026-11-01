@@ -1,50 +1,25 @@
 """Managed Minecraft processes with persistent logs and live console buffers."""
 import subprocess
-import threading
-import shutil
 import os
 import time
-from collections import deque
+import sys
+import signal
+from fastapi import HTTPException
 from pathlib import Path
+from functools import wraps
 
-from modules.instance_store import get_instance_path, read_instance, write_instance, write_run_script
+from modules.instance_store import get_instance_path, read_instance, write_instance, write_run_script, instance_lock, MAINTENANCE
 
 PROCESSES: dict[str, subprocess.Popen] = {}
-LINES: dict[str, deque[str]] = {}
-LINE_TOTALS: dict[str, int] = {}
 PROCESS_SAMPLES: dict[str, tuple[float, int]] = {}
 
 
-def _mark_stopped(instance_path: Path, instance_id: str, process_id: int) -> None:
-    """Persist a completed process even when its stdout pipe remains open."""
-    managed_process = PROCESSES.get(instance_id)
-    if managed_process and managed_process.pid == process_id:
-        PROCESSES.pop(instance_id, None)
-    instance = read_instance(instance_path)
-    # A newer server start may have reused this instance while the old process
-    # watcher was still winding down.
-    if instance.get("process_pid") == process_id:
-        instance["status"] = "stopped"
-        instance.pop("process_pid", None)
-        write_instance(instance_path, instance)
-
-
-def _watch_process(instance_path: Path, instance_id: str, process: subprocess.Popen) -> None:
-    """Update lifecycle state from process exit, not console stream EOF."""
-    process.wait()
-    _mark_stopped(instance_path, instance_id, process.pid)
-
-
-def _collect_output(instance_path: Path, instance_id: str, process: subprocess.Popen, log_path: Path) -> None:
-    """브라우저 연결 여부와 무관하게 서버 출력을 로그 파일에 계속 저장합니다."""
-    buffer = LINES.setdefault(instance_id, deque(maxlen=500))
-    with log_path.open("a", encoding="utf-8") as log_file:
-        for line in iter(process.stdout.readline, ""):
-            log_file.write(line); log_file.flush(); buffer.append(line.rstrip("\n"))
-            LINE_TOTALS[instance_id] = LINE_TOTALS.get(instance_id, 0) + 1
-            if "Done (" in line:
-                instance = read_instance(instance_path); instance["status"] = "running"; write_instance(instance_path, instance)
-    _mark_stopped(instance_path, instance_id, process.pid)
+def locked_status(function):
+    @wraps(function)
+    def guarded(instance_path):
+        with instance_lock(instance_path):
+            return function(instance_path)
+    return guarded
 
 
 def _is_instance_server_process(process_id: int, instance_path: Path) -> bool:
@@ -85,16 +60,25 @@ def find_process_id(instance_id: str) -> int | None:
     return None
 
 
+@locked_status
 def synchronize_status(instance_path: Path) -> dict:
     """Synchronize saved state with the actual Java server process."""
     instance = read_instance(instance_path)
     process_id = find_process_id(instance["id"])
     if process_id is None:
+        supervisor = instance.get("supervisor_pid")
+        if supervisor and _is_supervisor(supervisor, instance_path):
+            return instance
         if instance.get("status") != "stopped" or "process_pid" in instance:
             instance["status"] = "stopped"
             instance.pop("process_pid", None)
             write_instance(instance_path, instance)
         return instance
+    if instance.get("status") == "starting":
+        _, lines = console_snapshot(instance["id"])
+        if (instance_path / ".server-ready").exists() or any("Done (" in line for line in lines):
+            instance["status"] = "running"
+            write_instance(instance_path, instance)
     if instance.get("status") not in {"starting", "stopping", "running"}:
         instance["status"] = "running"
         instance["process_pid"] = process_id
@@ -103,42 +87,66 @@ def synchronize_status(instance_path: Path) -> dict:
 
 
 def start(instance_path: Path) -> dict:
-    """인스턴스의 run.sh를 실행하고 표준 출력을 계속 수집하도록 연결합니다."""
-    instance = read_instance(instance_path)
-    if instance["id"] in PROCESSES and PROCESSES[instance["id"]].poll() is None:
+    with instance_lock(instance_path):
+        if str(instance_path.resolve()) in MAINTENANCE:
+            raise HTTPException(409, "파일 작업이 진행 중입니다.")
+        instance = read_instance(instance_path)
+        if find_process_id(instance["id"]) is not None:
+            return synchronize_status(instance_path)
+        previous = PROCESSES.get(instance["id"])
+        if previous and previous.poll() is None:
+            return instance
+        saved_supervisor = instance.get("supervisor_pid")
+        if saved_supervisor and _is_supervisor(saved_supervisor, instance_path):
+            return instance
+        logs = instance_path / "logs"
+        logs.mkdir(exist_ok=True)
+        latest = logs / "latest.log"
+        if latest.exists():
+            latest.replace(logs / f"server-{time.time_ns()}.log")
+        # Keep the newest 20 archived logs instead of deleting diagnostic history.
+        for old in sorted(logs.glob("server-*.log"), reverse=True)[20:]:
+            old.unlink()
+        (instance_path / ".server-ready").unlink(missing_ok=True)
+        fifo = instance_path / ".console-input"
+        fifo.unlink(missing_ok=True)
+        os.mkfifo(fifo, 0o600)
+        write_run_script(instance_path, instance)
+        supervisor = Path(__file__).with_name("process_supervisor.py")
+        with latest.open("a", encoding="utf-8") as output:
+            process = subprocess.Popen([sys.executable, str(supervisor), str(fifo)], cwd=instance_path,
+                                       stdout=output, stderr=subprocess.STDOUT, start_new_session=True)
+        PROCESSES[instance["id"]] = process
+        instance.update(status="starting", supervisor_pid=process.pid)
+        instance.pop("process_pid", None)
+        write_instance(instance_path, instance)
         return instance
-    logs = instance_path / "logs"
-    # Each new server start begins with a clean log history as requested.
-    if logs.exists():
-        for path in logs.iterdir():
-            if path.is_dir(): shutil.rmtree(path)
-            else: path.unlink()
-    logs.mkdir(exist_ok=True)
-    # The browser console reads this separate in-memory tail, so reset it
-    # together with the on-disk logs for a genuinely clean new start.
-    LINES[instance["id"]] = deque(maxlen=500)
-    LINE_TOTALS[instance["id"]] = 0
-    # Always regenerate from the saved execution settings so an updated
-    # launcher format is reflected on the next server start.
-    write_run_script(instance_path, instance)
-    process = subprocess.Popen(["/bin/sh", "./run.sh"], cwd=instance_path, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-    PROCESSES[instance["id"]] = process
-    instance["status"] = "starting"
-    instance["process_pid"] = process.pid
-    write_instance(instance_path, instance)
-    threading.Thread(target=_collect_output, args=(instance_path, instance["id"], process, logs / "latest.log"), daemon=True).start()
-    threading.Thread(target=_watch_process, args=(instance_path, instance["id"], process), daemon=True).start()
-    return instance
+
+
+def _is_supervisor(pid: int, instance_path: Path) -> bool:
+    try:
+        return (Path(f"/proc/{pid}/cwd").resolve() == instance_path.resolve()
+                and b"process_supervisor.py" in Path(f"/proc/{pid}/cmdline").read_bytes())
+    except OSError:
+        return False
 
 
 def recent_lines(instance_id: str) -> list[str]:
     """새 콘솔 연결에 보낼 최근 실시간 로그 줄을 반환합니다."""
-    return list(LINES.get(instance_id, ()))
+    return console_snapshot(instance_id)[1]
 
 
 def console_snapshot(instance_id: str) -> tuple[int, list[str]]:
-    """Return the total emitted line count and the newest buffered lines."""
-    return LINE_TOTALS.get(instance_id, 0), list(LINES.get(instance_id, ()))
+    path = get_instance_path(instance_id) / "logs" / "latest.log"
+    if not path.exists():
+        return 0, []
+    # Bound memory and I/O regardless of how large the log has grown.
+    with path.open("rb") as stream:
+        size = stream.seek(0, 2)
+        stream.seek(max(0, size - 256 * 1024))
+        data = stream.read()
+    lines = data.decode("utf-8", errors="replace").splitlines()[-500:]
+    return (path.stat().st_ino << 64) + size, lines
 
 
 def process_metrics(instance_id: str) -> dict | None:
@@ -167,29 +175,50 @@ def process_metrics(instance_id: str) -> dict | None:
 
 
 def send_command(instance_id: str, command: str) -> bool:
-    """실행 중인 서버의 표준 입력으로 콘솔 명령 한 줄을 보냅니다."""
-    process = PROCESSES.get(instance_id)
-    if not process or process.poll() is not None or not process.stdin:
+    if not command.strip() or "\n" in command or "\r" in command or len(command.encode()) > 4000:
         return False
-    process.stdin.write(command + "\n"); process.stdin.flush(); return True
+    path = get_instance_path(instance_id)
+    if find_process_id(instance_id) is None:
+        return False
+    try:
+        fd = os.open(path / ".console-input", os.O_WRONLY | os.O_NONBLOCK)
+        try:
+            os.write(fd, (command + "\n").encode("utf-8"))
+        finally:
+            os.close(fd)
+        return True
+    except OSError:
+        return False
 
 
 def stop(instance_path: Path) -> dict:
-    """관리 중인 마인크래프트 서버에 정상 종료 명령을 요청합니다."""
-    instance = read_instance(instance_path); process = PROCESSES.get(instance["id"])
-    if process and process.poll() is None:
-        send_command(instance["id"], "stop")
-    instance["status"] = "stopping"; write_instance(instance_path, instance); return instance
+    with instance_lock(instance_path):
+        instance = synchronize_status(instance_path)
+        if instance["status"] == "stopped":
+            return instance
+        if not send_command(instance["id"], "stop"):
+            raise HTTPException(409, "정상 종료 명령을 전달하지 못했습니다. 기존 방식으로 시작한 서버는 강제 종료 후 다시 시작하세요.")
+        instance["status"] = "stopping"
+        write_instance(instance_path, instance)
+        return instance
 
 
 def force_stop(instance_path: Path) -> dict:
-    """정상 종료가 불가능한 서버 프로세스를 즉시 강제 종료합니다."""
-    instance = read_instance(instance_path); process = PROCESSES.get(instance["id"])
-    if process and process.poll() is None:
-        process.kill()
-    elif process_id := find_process_id(instance["id"]):
-        os.kill(process_id, 9)
-    instance["status"] = "stopped"
-    instance.pop("process_pid", None)
-    write_instance(instance_path, instance)
-    return instance
+    with instance_lock(instance_path):
+        instance = read_instance(instance_path)
+        supervisor = instance.get("supervisor_pid")
+        if supervisor and _is_supervisor(supervisor, instance_path):
+            os.killpg(supervisor, signal.SIGKILL)
+        elif process_id := find_process_id(instance["id"]):
+            os.kill(process_id, signal.SIGKILL)
+        process = PROCESSES.pop(instance["id"], None)
+        if process:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                raise HTTPException(409, "프로세스 종료를 기다리고 있습니다.")
+        instance.update(status="stopped")
+        instance.pop("process_pid", None)
+        instance.pop("supervisor_pid", None)
+        write_instance(instance_path, instance)
+        return instance

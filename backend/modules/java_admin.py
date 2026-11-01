@@ -3,6 +3,9 @@ import os
 import shutil
 import tarfile
 import tempfile
+import hashlib
+from uuid import uuid4
+import asyncio
 from pathlib import Path
 
 import httpx
@@ -15,7 +18,7 @@ from modules.task_store import start_task, update_progress
 from modules.auth import require_admin
 
 router = APIRouter(prefix="/admin/java-runtimes", tags=["admin-java-runtimes"], dependencies=[Depends(require_admin)])
-JAVA_INSTALL_DIR = Path(os.getenv("MARCHITECT_JAVA_INSTALL_DIR", "/java"))
+from modules.java_admin_paths import JAVA_INSTALL_DIR
 ADOPTIUM_API_URL = "https://api.adoptium.net/v3"
 
 
@@ -30,7 +33,7 @@ def safe_extract(archive: tarfile.TarFile, destination: Path) -> None:
         target = (destination / member.name).resolve()
         if not str(target).startswith(f"{destination}{os.sep}"):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="안전하지 않은 Java 압축 파일입니다.")
-    archive.extractall(destination)
+    archive.extractall(destination, filter="data")
 
 
 @router.get("")
@@ -116,6 +119,12 @@ async def download_java_runtime(request: RuntimeDownloadRequest, task_record: di
             package["link"], archive_path, max_size_bytes=512 * 1024 * 1024,
             on_progress=(lambda progress: update_progress(task_record, progress)) if task_record else None,
         )
+        def archive_checksum():
+            with archive_path.open("rb") as source:
+                return hashlib.file_digest(source, "sha256").hexdigest()
+        checksum = await asyncio.to_thread(archive_checksum)
+        if not package.get("checksum") or checksum != package["checksum"]:
+            raise HTTPException(502, "Java 다운로드 검증에 실패했습니다.")
         extract_path = temporary_path / "extract"
         extract_path.mkdir()
         with tarfile.open(archive_path, "r:gz") as archive:
@@ -130,7 +139,12 @@ async def download_java_runtime(request: RuntimeDownloadRequest, task_record: di
             if (runtime_path / "bin" / "java").is_file():
                 return {"message": "이미 설치되어 있습니다.", "path": str(runtime_path / "bin" / "java")}
             shutil.rmtree(runtime_path)
-        shutil.copytree(extracted_root, runtime_path)
+        staging = JAVA_INSTALL_DIR / (".install-" + uuid4().hex)
+        try:
+            shutil.copytree(extracted_root, staging)
+            staging.rename(runtime_path)
+        finally:
+            shutil.rmtree(staging, ignore_errors=True)
     finally:
         shutil.rmtree(temporary_path, ignore_errors=True)
     return {"message": "Temurin Java를 설치했습니다.", "path": str(runtime_path / "bin" / "java"), "sha256": package.get("checksum")}
