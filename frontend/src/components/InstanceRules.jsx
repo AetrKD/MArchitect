@@ -5,12 +5,14 @@ export default function InstanceRules({ instanceId, language, onNotify }) {
   const en = language === "en";
   const [config, setConfig] = useState({ timezone: "Asia/Seoul", rules: [] });
   const [loading, setLoading] = useState(true);
+  const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const weekdays = en ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] : ["월", "화", "수", "목", "금", "토", "일"];
   useEffect(() => {
     let active = true;
-    api.get("/instances/" + instanceId + "/rules").then(({ data }) => { if (active) setConfig(data); })
+    setLoading(true); setLoaded(false);
+    api.get("/instances/" + instanceId + "/rules").then(({ data }) => { if (active) { setConfig(data); setLoaded(true); } })
       .catch(() => { if (active) setError(en ? "Cannot load rules." : "규칙을 불러오지 못했습니다."); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
@@ -37,7 +39,7 @@ export default function InstanceRules({ instanceId, language, onNotify }) {
     <p>{en ? "Rules run while MArchitect is online. Missed times are not replayed. Restrictions block only manual starts by regular users; administrators and scheduled starts are allowed. Overnight windows belong to the selected starting weekday." : "MArchitect가 켜져 있을 때 예약이 실행되며, 꺼져 있던 동안 지난 예약은 실행하지 않습니다. 이용 제한은 일반 사용자의 수동 시작만 막으며 관리자와 예약 시작은 허용됩니다. 자정을 넘는 제한은 시작하는 요일을 선택하세요."}</p>
     <p>{en ? "Times use the timezone below. A scheduled stop wins if both actions share a time." : "모든 시각은 아래 시간대를 기준으로 합니다. 같은 시각의 예약 시작과 정지가 겹치면 정지를 우선합니다."}</p>
     {error && <p role="alert" className="form-error">{error}</p>}
-    {loading ? <p>{en ? "Loading…" : "불러오는 중…"}</p> : <form onSubmit={save}><fieldset disabled={saving}>
+    {loading ? <p>{en ? "Loading…" : "불러오는 중…"}</p> : loaded ? <form onSubmit={save}><fieldset disabled={saving}>
       <label htmlFor="rules-timezone">{en ? "Timezone" : "시간대"}</label><input id="rules-timezone" value={config.timezone} required onChange={event => setConfig({ ...config, timezone: event.target.value })} placeholder="Asia/Seoul" />
       {config.rules.map((rule, index) => <fieldset className="rule-card" key={rule.id}><legend>{index + 1}. {rule.kind === "start" ? en ? "Scheduled start" : "예약 시작" : rule.kind === "stop" ? en ? "Scheduled stop" : "예약 정지" : en ? "Start restriction" : "이용 제한 시간"}</legend>
         <label><input type="checkbox" checked={rule.enabled} onChange={event => update(rule.id, { enabled: event.target.checked })} /> {en ? "Enabled" : "사용"}</label>
@@ -47,6 +49,6 @@ export default function InstanceRules({ instanceId, language, onNotify }) {
         <button className="delete-button" type="button" onClick={() => setConfig(current => ({ ...current, rules: current.rules.filter(item => item.id !== rule.id) }))}>{en ? "Remove rule" : "규칙 삭제"}</button>
       </fieldset>)}
       <div className="rule-actions">{["start", "stop", "restriction"].map(kind => <button className="cancel-button" key={kind} type="button" disabled={config.rules.length >= 100} onClick={() => add(kind)}>{kind === "start" ? en ? "+ Scheduled start" : "+ 예약 시작" : kind === "stop" ? en ? "+ Scheduled stop" : "+ 예약 정지" : en ? "+ Restriction" : "+ 이용 제한 시간"}</button>)}<button className="create-button" type="submit">{saving ? en ? "Saving…" : "저장 중…" : en ? "Save rules" : "규칙 저장"}</button></div>
-    </fieldset></form>}
+    </fieldset></form> : <p>{en ? "Reopen this tab to retry." : "다른 탭으로 이동한 뒤 규칙 탭을 다시 열어주세요."}</p>}
   </section>;
 }
