@@ -1,16 +1,56 @@
-"""Small in-process task registry for long running downloads.
-
-Tasks survive browser navigation. They are intentionally not durable across a
-backend restart; a queue such as Redis can replace this module when deployed.
-"""
+"""Persistent download history with explicit interruption recovery on restart."""
 import asyncio
 from datetime import datetime, timezone
 from uuid import uuid4
+import json
+import shutil
+import threading
+from modules.auth import AUTH_DATABASE
+from modules.instance_store import INSTANCE_DIR, atomic_json
+from modules.java_admin_paths import JAVA_INSTALL_DIR
 
 from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 TASKS: dict[str, dict] = {}
+RUNNERS: set[asyncio.Task] = set()
+TASK_FILE = AUTH_DATABASE.parent / "tasks.json"
+TASK_LOCK = threading.RLock()
+
+
+class TaskRecord(dict):
+    def update(self, *args, **kwargs):
+        with TASK_LOCK:
+            super().update(*args, **kwargs)
+            persist_tasks()
+
+
+def persist_tasks():
+    with TASK_LOCK:
+        atomic_json(TASK_FILE, {"tasks": list(TASKS.values())})
+
+
+def restore_tasks():
+    TASKS.clear()
+    if TASK_FILE.exists():
+        for saved in json.loads(TASK_FILE.read_text(encoding="utf-8")).get("tasks", []):
+            record = TaskRecord(saved)
+            TASKS[record["id"]] = record
+            if record["status"] in {"queued", "running"}:
+                record.update(status="failed", error="백엔드 재시작으로 작업이 중단되었습니다. 다시 시도하세요.", updated_at=now())
+    # Only app-owned uncommitted staging folders are removed; completed instances remain untouched.
+    for base in (INSTANCE_DIR, JAVA_INSTALL_DIR):
+        for path in base.glob(".install-*"):
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+    persist_tasks()
+
+
+async def shutdown_tasks():
+    for task in list(RUNNERS):
+        task.cancel()
+    await asyncio.gather(*RUNNERS, return_exceptions=True)
+
 
 
 def now() -> str:
@@ -21,8 +61,9 @@ def now() -> str:
 def start_task(title: str, work) -> dict:
     """코루틴을 백그라운드 작업으로 등록하고 화면용 작업 정보를 반환합니다."""
     task_id = uuid4().hex
-    record = {"id": task_id, "title": title, "status": "queued", "progress": 0, "created_at": now(), "updated_at": now()}
+    record = TaskRecord({"id": task_id, "title": title, "status": "queued", "progress": 0, "created_at": now(), "updated_at": now()})
     TASKS[task_id] = record
+    persist_tasks()
 
     async def runner():
         """대기 중인 작업을 실행하고 완료 또는 실패 상태를 기록합니다."""
@@ -30,11 +71,16 @@ def start_task(title: str, work) -> dict:
         try:
             result = await work(record)
             record.update(status="completed", progress=100, result=result, updated_at=now())
+        except asyncio.CancelledError:
+            record.update(status="failed", error="백엔드 종료로 작업이 중단되었습니다. 다시 시도하세요.", updated_at=now())
+            raise
         except Exception as error:
             detail = getattr(error, "detail", None)
             record.update(status="failed", error=str(detail or error), updated_at=now())
 
-    asyncio.create_task(runner())
+    task = asyncio.create_task(runner())
+    RUNNERS.add(task)
+    task.add_done_callback(RUNNERS.discard)
     return record
 
 
@@ -45,6 +91,7 @@ def update_progress(record: dict, progress: int, message: str | None = None, ind
         record["message"] = message[:300]
     if indeterminate is not None:
         record["indeterminate"] = indeterminate
+    persist_tasks()
 
 
 @router.get("")

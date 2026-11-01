@@ -1,5 +1,9 @@
 """FastAPI application entry point and router registration."""
+import asyncio
+from contextlib import suppress
 from fastapi import FastAPI, Request
+from modules.instance_rules import router as rules_router, scheduler
+from modules.task_store import restore_tasks, shutdown_tasks
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 
@@ -39,6 +43,7 @@ async def require_api_session(request: Request, call_next):
     request.state.role = role
     return await call_next(request)
 
+app.include_router(rules_router)
 app.include_router(instances_router)
 app.include_router(java_runtimes_router)
 app.include_router(java_admin_router)
@@ -54,9 +59,19 @@ async def prepare_auth_database():
     """서버 시작 전에 접근 코드용 SQLite 데이터베이스를 준비합니다."""
     await initialize_auth_database()
     sync_domain_settings()
+    restore_tasks()
+    app.state.scheduler = asyncio.create_task(scheduler())
 
 
 @app.get("/")
 async def root():
     """백엔드가 정상적으로 실행 중인지 확인하는 응답을 반환합니다."""
     return {"message": "MArchitect API is running"}
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    app.state.scheduler.cancel()
+    with suppress(asyncio.CancelledError):
+        await app.state.scheduler
+    await shutdown_tasks()

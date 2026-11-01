@@ -7,6 +7,13 @@ const API_BASE_URL = "/api";
 // FastAPI 요청에 사용하는 공통 HTTP 클라이언트입니다.
 const api = axios.create({ baseURL: API_BASE_URL });
 let sessionToken = null;
+api.interceptors.response.use(response => response, error => {
+  if (error.response?.status === 401 && sessionToken) {
+    setAuthToken(null);
+    window.dispatchEvent(new Event("marchitect-session-expired"));
+  }
+  return Promise.reject(error);
+});
 
 export function setAuthToken(token) {
   // 로그인 세션 토큰을 모든 백엔드 요청의 헤더에 적용하거나 제거합니다.

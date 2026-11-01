@@ -116,3 +116,11 @@ label { font-size:14px; font-weight:700; }
 @media(max-width:620px){.sidebar-mobile-toggle{border-radius:2px 0 0 2px}.page-header,.detail-heading,.file-browser-heading{align-items:flex-start;flex-direction:column}.runtime-buttons,.file-browser-buttons{width:100%;justify-content:stretch}.runtime-buttons>*{flex:1;min-width:0}.file-browser-buttons>*{flex:1 0 auto;text-align:center}.instance-summary{grid-template-columns:40px minmax(0,1fr) 18px}.file-list li{grid-template-columns:minmax(0,1fr) auto}}
 @media(max-width:620px){.detail-page.console-active{gap:10px;padding:12px 0 68px}.console-active .console-section{height:auto;margin:0}.console-active .detail-heading{gap:12px}.console-active .header-actions{width:100%}.console-active .header-actions button{flex:1}.detail-nav{width:calc(100% - 28px)}}
 @media(min-width:400px){.login-card h1{white-space:nowrap}}
+
+.instance-rules fieldset { border: 0; padding: 0; min-width: 0; }
+.instance-rules .rule-card { border: 1px solid var(--border-color, #64748b); border-radius: 12px; padding: 16px; margin: 20px 0; }
+.rule-weekdays, .rule-times, .rule-actions { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0; }
+.rule-weekdays label { display: flex; align-items: center; gap: 6px; }
+.instance-rules input[type="checkbox"] { width: auto; }
+.rule-times label { flex: 1 1 160px; }
+button:disabled { cursor: not-allowed; opacity: .5; }

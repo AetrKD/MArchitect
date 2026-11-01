@@ -159,11 +159,18 @@ function App() {
   }
 
   function logout() {
+    api.post("/auth/logout").catch(() => {});
     // 메모리에만 둔 세션 토큰과 역할을 지우고 로그인 화면으로 돌아갑니다.
     setAuthToken(null);
     setRole(null);
     navigate("/");
   }
+
+  useEffect(() => {
+    const expired = () => { setRole(null); navigate("/"); };
+    window.addEventListener("marchitect-session-expired", expired);
+    return () => window.removeEventListener("marchitect-session-expired", expired);
+  }, []);
 
   function withAppChrome(page) {
     // 로그인한 역할에 맞는 사이드바와 전역 토스트를 모든 화면에 함께 표시합니다.
@@ -192,8 +199,12 @@ function App() {
     // 로그인한 사용자가 선택한 인스턴스의 현재 상태에 따라 시작 또는 정지를 요청합니다.
     const instance = instances.find((current) => current.id === id);
     const action = instance?.status === "running" ? "stop" : "start";
-    const response = await api.post(`/instances/${id}/${action}`);
-    setInstances((current) => current.map((item) => item.id === id ? response.data : item));
+    try {
+      const response = await api.post(`/instances/${id}/${action}`);
+      setInstances((current) => current.map((item) => item.id === id ? response.data : item));
+    } catch (error) {
+      notify(error.response?.data?.detail || "서버 상태를 변경하지 못했습니다.", "error");
+    }
   }
 
   async function deleteInstance(id) {

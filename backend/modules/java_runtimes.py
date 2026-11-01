@@ -32,6 +32,8 @@ def find_java_executables() -> list[Path]:
             continue
         for executable_name in executable_names:
             for executable in root.glob(f"**/bin/{executable_name}"):
+                if any(part.startswith(".install-") for part in executable.relative_to(root).parts):
+                    continue
                 resolved_path = executable.resolve()
                 if resolved_path in seen_paths or not os.access(resolved_path, os.X_OK):
                     continue

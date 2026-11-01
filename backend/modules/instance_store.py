@@ -3,6 +3,10 @@ import json
 import os
 import re
 import shlex
+import threading
+import tempfile
+from copy import deepcopy
+from contextlib import contextmanager
 from pathlib import Path
 
 from fastapi import HTTPException, status
@@ -10,7 +14,7 @@ from fastapi import HTTPException, status
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 # Docker에서는 /data/instances를 마운트하고, 로컬 실행 시 기존 backend/instance를 사용합니다.
 INSTANCE_DIR = Path(os.getenv("MARCHITECT_INSTANCE_DIR", str(BACKEND_DIR / "instance")))
-INSTANCE_DIR.mkdir(exist_ok=True)
+INSTANCE_DIR.mkdir(parents=True, exist_ok=True)
 DEFAULT_JAVA_PATH = os.getenv("MARCHITECT_DEFAULT_JAVA_PATH", "/java/21/bin/java")
 DEFAULT_JVM_ARGS = "-Dfile.encoding=UTF-8"
 
@@ -32,14 +36,70 @@ def get_instance_path(instance_id: str) -> Path:
     return instance_path
 
 
+_LOCKS: dict[str, threading.RLock] = {}
+MAINTENANCE: set[str] = set()
+
+
+def instance_lock(instance_path: Path):
+    return _LOCKS.setdefault(str(instance_path.resolve()), threading.RLock())
+
+
+@contextmanager
+def maintenance(instance_path: Path):
+    """Reserve a stopped instance across asynchronous file operations."""
+    from modules.server_process import find_process_id
+    key = str(instance_path.resolve())
+    with instance_lock(instance_path):
+        if key in MAINTENANCE or find_process_id(instance_path.name) is not None:
+            raise HTTPException(409, "서버를 정지하고 진행 중인 파일 작업이 끝난 뒤 다시 시도하세요.")
+        MAINTENANCE.add(key)
+    try:
+        yield
+    finally:
+        MAINTENANCE.discard(key)
+
+
+class InstanceSnapshot(dict):
+    def __init__(self, values):
+        super().__init__(values)
+        self.original = deepcopy(values)
+
+
+def atomic_json(path: Path, values: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=".marchitect-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            json.dump(values, output, ensure_ascii=False, indent=2)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(name, path)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
 def read_instance(instance_path: Path) -> dict:
     """인스턴스 폴더의 JSON 메타데이터를 읽습니다."""
-    return json.loads((instance_path / "instance.json").read_text(encoding="utf-8"))
+    with instance_lock(instance_path):
+        return InstanceSnapshot(json.loads((instance_path / "instance.json").read_text(encoding="utf-8")))
 
 
 def write_instance(instance_path: Path, instance: dict) -> None:
     """인스턴스 메타데이터를 UTF-8 JSON 형식으로 저장합니다."""
-    (instance_path / "instance.json").write_text(json.dumps(instance, ensure_ascii=False, indent=2), encoding="utf-8")
+    with instance_lock(instance_path):
+        path = instance_path / "instance.json"
+        if isinstance(instance, InstanceSnapshot) and path.exists():
+            current = json.loads(path.read_text(encoding="utf-8"))
+            for key in instance.original.keys() - instance.keys():
+                current.pop(key, None)
+            current.update({key: value for key, value in instance.items() if key not in instance.original or value != instance.original[key]})
+        else:
+            current = dict(instance)
+        atomic_json(path, current)
+        instance.clear()
+        instance.update(current)
+        if isinstance(instance, InstanceSnapshot):
+            instance.original = deepcopy(current)
 
 
 def write_run_script(instance_path: Path, instance: dict) -> None:
