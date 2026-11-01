@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import api, { apiFileUrl, apiWebSocketUrl } from "../lib/api.js";
 import InstanceRules from "../components/InstanceRules.jsx";
 const NAV_ITEMS = [
-  ["rules", "규칙"],
   ["overview", "개요"],
   ["settings", "설정"],
   ["instance-settings", "서버 정보"],
@@ -250,7 +249,7 @@ function InstanceDetail({ instance, isAdmin, language, onBack, onToggleServer, o
       {["mods", "plugins", "config"].includes(activeTab) && <FileBrowser instanceId={instance.id} area={activeTab} title={activeTab === "mods" ? isEnglish ? "Mods" : "모드" : activeTab === "plugins" ? isEnglish ? "Plugins" : "플러그인" : "설정 파일"} isAdmin={isAdmin} onConfirm={onConfirm} clearable />}
 
       {isAdmin && <nav className="detail-nav" aria-label="게임 서버 상세 메뉴">
-        {[...NAV_ITEMS, ...(extensions.mods.exists ? [["mods", "모드"]] : []), ...(extensions.plugins.exists ? [["plugins", "플러그인"]] : []), ...(extensions.config.exists ? [["config", "설정 파일"]] : [])].map(([id, label]) => <button className={activeTab === id ? "active" : ""} type="button" key={id} onClick={() => setActiveTab(id)}>{label}</button>)}
+        {[...NAV_ITEMS, ...(extensions.mods.exists ? [["mods", "모드"]] : []), ...(extensions.plugins.exists ? [["plugins", "플러그인"]] : []), ...(extensions.config.exists ? [["config", "설정 파일"]] : []), ["rules", "규칙"]].map(([id, label]) => <button className={activeTab === id ? "active" : ""} type="button" key={id} onClick={() => setActiveTab(id)}>{label}</button>)}
       </nav>}
     </main>
   );

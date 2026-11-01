@@ -4,10 +4,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from modules.auth import require_admin
 from modules.time_settings import service_local_time
@@ -40,19 +39,8 @@ class Rule(BaseModel):
 
 
 class Rules(BaseModel):
-    timezone: str = "system"
+    model_config = ConfigDict(extra="forbid")
     rules: list[Rule] = Field(default_factory=list, max_length=100)
-
-    @field_validator("timezone")
-    @classmethod
-    def validate_timezone(cls, value):
-        if value == "system":
-            return value
-        try:
-            ZoneInfo(value)
-        except (ZoneInfoNotFoundError, ValueError) as error:
-            raise ValueError("유효한 시간대를 선택하세요.") from error
-        return value
 
     @model_validator(mode="after")
     def validate_ids(self):
@@ -64,12 +52,15 @@ class Rules(BaseModel):
 def load_rules(path):
     import json
     file = path / "rules.json"
-    return Rules.model_validate_json(file.read_text(encoding="utf-8")) if file.exists() else Rules()
+    if not file.exists():
+        return Rules()
+    saved = json.loads(file.read_text(encoding="utf-8"))
+    # Legacy instance overrides no longer affect scheduling; preserve every rule.
+    saved.pop("timezone", None)
+    return Rules.model_validate(saved)
 
 
 def local_time(config: Rules, now: datetime) -> datetime:
-    if config.timezone != "system":
-        return now.astimezone(ZoneInfo(config.timezone))
     return service_local_time(now)
 
 

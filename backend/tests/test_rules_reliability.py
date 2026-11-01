@@ -23,9 +23,14 @@ def session(role, code_id=None):
 
 
 class RuleTests(unittest.TestCase):
+    def setUp(self):
+        zone = patch.object(time_settings, "SERVICE_TIMEZONE", "Asia/Seoul")
+        zone.start()
+        self.addCleanup(zone.stop)
+
     def config(self, **overrides):
         rule = {"kind": "restriction", "days": [0], "time": "22:00", "end_time": "06:00", **overrides}
-        return rules.Rules(timezone="Asia/Seoul", rules=[rule])
+        return rules.Rules(rules=[rule])
 
     def test_overnight_and_boundary(self):
         config = self.config()
@@ -45,22 +50,22 @@ class RuleTests(unittest.TestCase):
 
     def test_system_timezone_and_dst(self):
         config = rules.Rules()
-        self.assertEqual(config.timezone, "system")
-        with patch.dict(os.environ, {"TZ": "America/New_York"}):
+        self.assertNotIn("timezone", config.model_dump())
+        with patch.object(time_settings, "SERVICE_TIMEZONE", "system"), patch.dict(os.environ, {"TZ": "America/New_York"}):
             winter = rules.local_time(config, datetime.fromisoformat("2026-01-05T14:00:00+00:00"))
             summer = rules.local_time(config, datetime.fromisoformat("2026-07-06T13:00:00+00:00"))
             self.assertEqual(winter.hour, 9)
             self.assertEqual(summer.hour, 9)
             self.assertNotEqual(winter.utcoffset(), summer.utcoffset())
         with patch.dict(os.environ, {"TZ": "UTC"}):
-            explicit = rules.Rules(timezone="Asia/Seoul")
+            explicit = rules.Rules()
             self.assertEqual(rules.local_time(explicit, datetime.fromisoformat("2026-11-02T00:00:00+00:00")).hour, 9)
 
     def test_system_localtime_file(self):
         import io
         from importlib.resources import files
         data = files("tzdata.zoneinfo").joinpath("Asia/Seoul").read_bytes()
-        with patch.dict(os.environ, {"TZ": ""}), patch.object(time_settings, "Path") as path:
+        with patch.object(time_settings, "SERVICE_TIMEZONE", "system"), patch.dict(os.environ, {"TZ": ""}), patch.object(time_settings, "Path") as path:
             path.return_value.is_file.return_value = True
             path.return_value.open.return_value = io.BytesIO(data)
             result = rules.local_time(rules.Rules(), datetime.fromisoformat("2026-11-02T00:00:00+00:00"))
@@ -78,7 +83,7 @@ class RuleTests(unittest.TestCase):
             root = Path(temporary)
             path = root / "server"; path.mkdir()
             store.write_instance(path, {"id": "server", "status": "stopped"})
-            config = rules.Rules(timezone="Asia/Seoul", rules=[{"kind": kind, "days": [0], "time": "09:00"} for kind in ["start", "stop"]])
+            config = rules.Rules(rules=[{"kind": kind, "days": [0], "time": "09:00"} for kind in ["start", "stop"]])
             store.atomic_json(path / "rules.json", config.model_dump())
             now = datetime.fromisoformat("2026-11-02T09:00:00+09:00")
             with patch.object(rules, "INSTANCE_DIR", root), patch.object(process, "start") as start, patch.object(process, "stop") as stop:
@@ -98,6 +103,10 @@ class RuleTests(unittest.TestCase):
                 self.assertEqual(client.put(url, json=config, headers={"X-MArchitect-Token": "u"}).status_code, 403)
                 self.assertEqual(client.put(url, json=config, headers={"X-MArchitect-Token": "a"}).status_code, 200)
                 self.assertEqual(client.get(url).json(), config)
+                self.assertEqual(client.put(url, json={**config, "timezone": "UTC"}, headers={"X-MArchitect-Token": "a"}).status_code, 422)
+                store.atomic_json(path / "rules.json", {**config, "timezone": "America/New_York"})
+                self.assertEqual(client.get(url).json(), config)
+                self.assertEqual(rules.local_time(rules.load_rules(path), datetime.fromisoformat("2026-11-02T00:00:00+00:00")).hour, 9)
                 with patch.object(rules, "is_start_restricted", return_value=True), patch.object(instances, "start_process", return_value={"status": "starting"}) as start:
                     self.assertEqual(client.post("/instances/server/start", headers={"X-MArchitect-Token": "u"}).status_code, 403)
                     self.assertEqual(client.post("/instances/server/start", headers={"X-MArchitect-Token": "a"}).status_code, 200)

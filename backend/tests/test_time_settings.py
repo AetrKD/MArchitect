@@ -36,5 +36,6 @@ class ServiceTimeTests(unittest.TestCase):
                 self.assertEqual(time_settings.SERVICE_TIMEZONE, "Asia/Seoul")
                 now = datetime.fromisoformat("2026-11-02T00:00:00+00:00")
                 self.assertEqual(instance_rules.local_time(instance_rules.Rules(), now).hour, 9)
-                self.assertEqual(instance_rules.local_time(instance_rules.Rules(timezone="UTC"), now).hour, 0)
+                self.assertEqual(client.put("/settings/time", headers=admin, json={"timezone": "UTC"}).status_code, 200)
+                self.assertEqual(instance_rules.local_time(instance_rules.Rules(), now).hour, 0)
                 self.assertEqual(client.put("/settings/time", headers=admin, json={"timezone": "system"}).json()["timezone"], "system")

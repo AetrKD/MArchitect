@@ -117,12 +117,40 @@ label { font-size:14px; font-weight:700; }
 @media(max-width:620px){.detail-page.console-active{gap:10px;padding:12px 0 68px}.console-active .console-section{height:auto;margin:0}.console-active .detail-heading{gap:12px}.console-active .header-actions{width:100%}.console-active .header-actions button{flex:1}.detail-nav{width:calc(100% - 28px)}}
 @media(min-width:400px){.login-card h1{white-space:nowrap}}
 
-.instance-rules fieldset { border: 0; padding: 0; min-width: 0; }
-.instance-rules .rule-card { border: 1px solid var(--border-color, #64748b); border-radius: 12px; padding: 16px; margin: 20px 0; }
-.rule-weekdays, .rule-times, .rule-actions { display: flex; flex-wrap: wrap; gap: 14px; margin: 14px 0; }
-.rule-weekdays label { display: flex; align-items: center; gap: 6px; }
-.instance-rules input[type="checkbox"] { width: auto; }
-.rule-times label { flex: 1 1 160px; }
+.instance-rules fieldset { border:0; padding:0; margin:0; min-width:0; }
+.rules-heading { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px 12px; }
+.rules-heading>span,.rules-help { color:var(--muted); font-size:12px; }
+.rules-help summary { cursor:pointer; width:fit-content; }
+.rules-help p { margin:8px 0 0; line-height:1.6; }
+.rules-list { display:grid; gap:8px; }
+.instance-rules .rule-card { display:grid; grid-template-columns:140px minmax(0,1fr) 30px; align-items:center; gap:12px; border:1px solid var(--border); border-radius:4px; padding:12px; }
+.rule-heading { display:grid; align-content:center; gap:6px; min-width:0; }
+.rule-heading strong { display:flex; align-items:center; gap:7px; font-size:13px; }
+.rule-kind { width:7px; height:7px; flex:0 0 7px; border-radius:50%; background:var(--primary); }
+.rule-kind-stop { background:var(--danger); }
+.rule-kind-restriction { background:var(--muted); }
+.rule-enabled { display:flex; align-items:center; gap:6px; font-size:11px; font-weight:400; color:var(--muted); cursor:pointer; }
+.instance-rules input[type="checkbox"] { width:14px; height:14px; margin:0; padding:0; accent-color:var(--primary); }
+.rule-disabled { background:var(--surface-raised); }
+.rule-disabled .rule-kind { background:var(--muted); }
+.rule-schedule { display:flex; align-items:flex-end; flex-wrap:wrap; gap:10px 18px; min-width:0; }
+.rule-days legend,.rule-times label { color:var(--muted); font-size:11px; font-weight:400; }
+.rule-days legend { padding:0; margin-bottom:4px; }
+.rule-weekdays { display:flex; gap:3px; }
+.rule-weekdays button { display:grid; place-items:center; min-width:27px; height:30px; padding:0 5px; border:1px solid var(--border); border-radius:3px; background:var(--input); color:var(--muted); font-size:11px; }
+.rule-weekdays button.selected { color:#fff; border-color:var(--primary); background:var(--primary); }
+.rule-times { display:flex; align-items:flex-end; gap:6px; }
+.rule-times label { display:grid; gap:4px; }
+.rule-times input { width:104px; min-width:0; padding:6px 7px; height:30px; font-size:12px; }
+.rule-time-separator { align-self:flex-end; padding-bottom:6px; color:var(--muted); }
+.rule-remove { width:30px; height:30px; padding:0; border:1px solid transparent; border-radius:3px; color:var(--muted); background:transparent; font-size:21px; }
+.rule-remove:hover { color:var(--danger); border-color:var(--border); background:var(--input); }
+.rule-actions { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-top:12px; }
+.rule-add-actions { display:flex; flex-wrap:wrap; gap:6px; }
+.rule-add-actions button { padding:7px 9px; font-size:12px; }
+.rules-empty { margin:0; padding:18px 0; color:var(--muted); font-size:13px; text-align:center; }
+@media(max-width:960px) { .instance-rules .rule-card { grid-template-columns:minmax(0,1fr) 30px; gap:10px; }.rule-heading { display:flex; align-items:center; flex-wrap:wrap; gap:8px 14px; }.rule-schedule { grid-column:1 / -1; grid-row:2; }.rule-remove { grid-column:2; grid-row:1; } }
+@media(max-width:620px) { .rule-weekdays button { min-width:30px; height:32px; }.rule-times input { height:32px; }.rule-actions>.create-button { margin-left:auto; } }
 button:disabled { cursor: not-allowed; opacity: .5; }
 
 .service-clock { display: flex; justify-content: flex-end; align-items: baseline; flex-wrap: wrap; gap: 8px 12px; padding: 14px 24px 0; font-size: .85rem; }
