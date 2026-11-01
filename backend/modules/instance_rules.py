@@ -1,8 +1,6 @@
 """Persistent weekly instance rules. Weekdays are Monday=0 through Sunday=6."""
 import asyncio
 import logging
-import os
-from pathlib import Path
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
@@ -12,6 +10,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from modules.auth import require_admin
+from modules.time_settings import service_local_time
 from modules.instance_store import INSTANCE_DIR, atomic_json, get_instance_path, instance_lock
 
 router = APIRouter(prefix="/instances", tags=["instance-rules"])
@@ -71,19 +70,7 @@ def load_rules(path):
 def local_time(config: Rules, now: datetime) -> datetime:
     if config.timezone != "system":
         return now.astimezone(ZoneInfo(config.timezone))
-    # TZ is an explicit runtime override; /etc/localtime supports host mounts
-    # and preserves DST rules rather than caching today's UTC offset.
-    configured = os.getenv("TZ", "").lstrip(":")
-    if configured:
-        try:
-            return now.astimezone(ZoneInfo(configured))
-        except (ZoneInfoNotFoundError, ValueError):
-            pass
-    localtime = Path("/etc/localtime")
-    if localtime.is_file():
-        with localtime.open("rb") as source:
-            return now.astimezone(ZoneInfo.from_file(source))
-    return now.astimezone()
+    return service_local_time(now)
 
 
 def restricted(config: Rules, now: datetime) -> bool:

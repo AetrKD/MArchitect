@@ -3,6 +3,7 @@ import asyncio
 from contextlib import suppress
 from fastapi import FastAPI, Request
 from modules.instance_rules import router as rules_router, scheduler
+from modules.time_settings import router as time_router, sync_time_settings
 from modules.task_store import restore_tasks, shutdown_tasks
 from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
@@ -43,6 +44,7 @@ async def require_api_session(request: Request, call_next):
     request.state.role = role
     return await call_next(request)
 
+app.include_router(time_router)
 app.include_router(rules_router)
 app.include_router(instances_router)
 app.include_router(java_runtimes_router)
@@ -59,6 +61,7 @@ async def prepare_auth_database():
     """서버 시작 전에 접근 코드용 SQLite 데이터베이스를 준비합니다."""
     await initialize_auth_database()
     sync_domain_settings()
+    sync_time_settings()
     restore_tasks()
     app.state.scheduler = asyncio.create_task(scheduler())
 

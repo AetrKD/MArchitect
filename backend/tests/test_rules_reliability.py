@@ -15,7 +15,7 @@ from unittest.mock import patch
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
-from modules import auth, instance_rules as rules, instance_store as store, instances, server_process as process, task_store
+from modules import time_settings, auth, instance_rules as rules, instance_store as store, instances, server_process as process, task_store
 
 
 def session(role, code_id=None):
@@ -60,7 +60,7 @@ class RuleTests(unittest.TestCase):
         import io
         from importlib.resources import files
         data = files("tzdata.zoneinfo").joinpath("Asia/Seoul").read_bytes()
-        with patch.dict(os.environ, {"TZ": ""}), patch.object(rules, "Path") as path:
+        with patch.dict(os.environ, {"TZ": ""}), patch.object(time_settings, "Path") as path:
             path.return_value.is_file.return_value = True
             path.return_value.open.return_value = io.BytesIO(data)
             result = rules.local_time(rules.Rules(), datetime.fromisoformat("2026-11-02T00:00:00+00:00"))
