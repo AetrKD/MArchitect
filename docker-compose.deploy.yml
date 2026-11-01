@@ -7,9 +7,11 @@ services:
       dockerfile: Dockerfile.production
     restart: unless-stopped
     volumes:
+      - /etc/localtime:/etc/localtime:ro
       - ${MARCHITECT_DATA_DIR:?An absolute data directory is required}:/data
       - ${MARCHITECT_JAVA_DIR:?An absolute Java directory is required}:/java
     environment:
+      TZ: ${MARCHITECT_TIMEZONE:-}
       MARCHITECT_INITIAL_ADMIN_CODE: ${MARCHITECT_INITIAL_ADMIN_CODE:?Set a private administrator code in the server .env}
       MARCHITECT_INITIAL_USER_CODE: ${MARCHITECT_INITIAL_USER_CODE:-}
       MARCHITECT_JAVA_ROOTS: /java

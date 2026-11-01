@@ -25,7 +25,7 @@ def session(role, code_id=None):
 class RuleTests(unittest.TestCase):
     def config(self, **overrides):
         rule = {"kind": "restriction", "days": [0], "time": "22:00", "end_time": "06:00", **overrides}
-        return rules.Rules(rules=[rule])
+        return rules.Rules(timezone="Asia/Seoul", rules=[rule])
 
     def test_overnight_and_boundary(self):
         config = self.config()
@@ -43,6 +43,29 @@ class RuleTests(unittest.TestCase):
         self.assertTrue(rules.restricted(config, datetime.fromisoformat("2026-11-02T00:00:00+00:00")))
         self.assertFalse(rules.restricted(config, datetime.fromisoformat("2026-11-02T18:00:00+09:00")))
 
+    def test_system_timezone_and_dst(self):
+        config = rules.Rules()
+        self.assertEqual(config.timezone, "system")
+        with patch.dict(os.environ, {"TZ": "America/New_York"}):
+            winter = rules.local_time(config, datetime.fromisoformat("2026-01-05T14:00:00+00:00"))
+            summer = rules.local_time(config, datetime.fromisoformat("2026-07-06T13:00:00+00:00"))
+            self.assertEqual(winter.hour, 9)
+            self.assertEqual(summer.hour, 9)
+            self.assertNotEqual(winter.utcoffset(), summer.utcoffset())
+        with patch.dict(os.environ, {"TZ": "UTC"}):
+            explicit = rules.Rules(timezone="Asia/Seoul")
+            self.assertEqual(rules.local_time(explicit, datetime.fromisoformat("2026-11-02T00:00:00+00:00")).hour, 9)
+
+    def test_system_localtime_file(self):
+        import io
+        from importlib.resources import files
+        data = files("tzdata.zoneinfo").joinpath("Asia/Seoul").read_bytes()
+        with patch.dict(os.environ, {"TZ": ""}), patch.object(rules, "Path") as path:
+            path.return_value.is_file.return_value = True
+            path.return_value.open.return_value = io.BytesIO(data)
+            result = rules.local_time(rules.Rules(), datetime.fromisoformat("2026-11-02T00:00:00+00:00"))
+            self.assertEqual(result.hour, 9)
+
     def test_invalid_rules(self):
         for changes in [{"days": []}, {"days": [7]}, {"days": [1, 1]}, {"time": "24:00"}, {"end_time": "22:00"}, {"end_time": None}]:
             with self.assertRaises(ValidationError):
@@ -55,7 +78,7 @@ class RuleTests(unittest.TestCase):
             root = Path(temporary)
             path = root / "server"; path.mkdir()
             store.write_instance(path, {"id": "server", "status": "stopped"})
-            config = rules.Rules(rules=[{"kind": kind, "days": [0], "time": "09:00"} for kind in ["start", "stop"]])
+            config = rules.Rules(timezone="Asia/Seoul", rules=[{"kind": kind, "days": [0], "time": "09:00"} for kind in ["start", "stop"]])
             store.atomic_json(path / "rules.json", config.model_dump())
             now = datetime.fromisoformat("2026-11-02T09:00:00+09:00")
             with patch.object(rules, "INSTANCE_DIR", root), patch.object(process, "start") as start, patch.object(process, "stop") as stop:

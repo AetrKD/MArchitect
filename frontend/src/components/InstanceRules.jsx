@@ -3,7 +3,7 @@ import api from "../lib/api.js";
 
 export default function InstanceRules({ instanceId, language, onNotify }) {
   const en = language === "en";
-  const [config, setConfig] = useState({ timezone: "Asia/Seoul", rules: [] });
+  const [config, setConfig] = useState({ timezone: "system", rules: [] });
   const [loading, setLoading] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -40,7 +40,7 @@ export default function InstanceRules({ instanceId, language, onNotify }) {
     <p>{en ? "Times use the timezone below. A scheduled stop wins if both actions share a time." : "모든 시각은 아래 시간대를 기준으로 합니다. 같은 시각의 예약 시작과 정지가 겹치면 정지를 우선합니다."}</p>
     {error && <p role="alert" className="form-error">{error}</p>}
     {loading ? <p>{en ? "Loading…" : "불러오는 중…"}</p> : loaded ? <form onSubmit={save}><fieldset disabled={saving}>
-      <label htmlFor="rules-timezone">{en ? "Timezone" : "시간대"}</label><input id="rules-timezone" value={config.timezone} required onChange={event => setConfig({ ...config, timezone: event.target.value })} placeholder="Asia/Seoul" />
+      <label htmlFor="rules-timezone">{en ? "Timezone" : "시간대"}</label><select id="rules-timezone" value={config.timezone === "system" ? "system" : "custom"} onChange={event => setConfig({ ...config, timezone: event.target.value === "system" ? "system" : "UTC" })}><option value="system">{en ? "Use server system timezone" : "서버 시스템 시간대 사용"}</option><option value="custom">{en ? "Specify timezone" : "시간대 직접 지정"}</option></select>{config.timezone !== "system" && <input aria-label={en ? "Custom timezone" : "직접 지정할 시간대"} value={config.timezone} required onChange={event => setConfig({ ...config, timezone: event.target.value })} placeholder="Asia/Seoul" />}
       {config.rules.map((rule, index) => <fieldset className="rule-card" key={rule.id}><legend>{index + 1}. {rule.kind === "start" ? en ? "Scheduled start" : "예약 시작" : rule.kind === "stop" ? en ? "Scheduled stop" : "예약 정지" : en ? "Start restriction" : "이용 제한 시간"}</legend>
         <label><input type="checkbox" checked={rule.enabled} onChange={event => update(rule.id, { enabled: event.target.checked })} /> {en ? "Enabled" : "사용"}</label>
         <div className="rule-weekdays">{weekdays.map((day, value) => <label key={value}><input type="checkbox" checked={rule.days.includes(value)} onChange={event => update(rule.id, { days: event.target.checked ? [...rule.days, value].sort() : rule.days.filter(item => item !== value) })} />{day}</label>)}</div>

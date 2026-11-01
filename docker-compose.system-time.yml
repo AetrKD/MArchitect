@@ -1,0 +1,6 @@
+# Linux hosts: combine with your normal Compose file to follow host timezone.
+# docker compose -f docker-compose.production.yml -f docker-compose.system-time.yml up -d --build
+services:
+  backend:
+    volumes:
+      - /etc/localtime:/etc/localtime:ro

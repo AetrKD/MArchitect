@@ -1,6 +1,8 @@
 """Persistent weekly instance rules. Weekdays are Monday=0 through Sunday=6."""
 import asyncio
 import logging
+import os
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Literal
 from uuid import uuid4
@@ -39,12 +41,14 @@ class Rule(BaseModel):
 
 
 class Rules(BaseModel):
-    timezone: str = "Asia/Seoul"
+    timezone: str = "system"
     rules: list[Rule] = Field(default_factory=list, max_length=100)
 
     @field_validator("timezone")
     @classmethod
     def validate_timezone(cls, value):
+        if value == "system":
+            return value
         try:
             ZoneInfo(value)
         except (ZoneInfoNotFoundError, ValueError) as error:
@@ -64,8 +68,26 @@ def load_rules(path):
     return Rules.model_validate_json(file.read_text(encoding="utf-8")) if file.exists() else Rules()
 
 
+def local_time(config: Rules, now: datetime) -> datetime:
+    if config.timezone != "system":
+        return now.astimezone(ZoneInfo(config.timezone))
+    # TZ is an explicit runtime override; /etc/localtime supports host mounts
+    # and preserves DST rules rather than caching today's UTC offset.
+    configured = os.getenv("TZ", "").lstrip(":")
+    if configured:
+        try:
+            return now.astimezone(ZoneInfo(configured))
+        except (ZoneInfoNotFoundError, ValueError):
+            pass
+    localtime = Path("/etc/localtime")
+    if localtime.is_file():
+        with localtime.open("rb") as source:
+            return now.astimezone(ZoneInfo.from_file(source))
+    return now.astimezone()
+
+
 def restricted(config: Rules, now: datetime) -> bool:
-    local = now.astimezone(ZoneInfo(config.timezone))
+    local = local_time(config, now)
     clock = local.strftime("%H:%M")
     for rule in config.rules:
         if not rule.enabled or rule.kind != "restriction":
@@ -106,7 +128,7 @@ def run_pending(now=None):
         try:
             with instance_lock(path):
                 config = load_rules(path)
-                local = now.astimezone(ZoneInfo(config.timezone))
+                local = local_time(config, now)
                 state_file = path / "rule-state.json"
                 state = json.loads(state_file.read_text(encoding="utf-8")) if state_file.exists() else {}
                 due = [rule for rule in config.rules if rule.enabled and rule.kind != "restriction"
