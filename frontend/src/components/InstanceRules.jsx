@@ -21,7 +21,7 @@ export default function InstanceRules({ instanceId, language, onNotify }) {
     setConfig(current => ({ ...current, rules: current.rules.map(rule => rule.id === id ? { ...rule, ...changes } : rule) }));
   }
   function add(kind) {
-    setConfig(current => ({ ...current, rules: [...current.rules, { id: crypto.randomUUID(), kind, enabled: true, days: [0, 1, 2, 3, 4, 5, 6], time: kind === "stop" ? "23:00" : "09:00", end_time: kind === "restriction" ? "18:00" : null }] }));
+    setConfig(current => ({ ...current, rules: [...current.rules, { id: Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join(""), kind, enabled: true, days: [0, 1, 2, 3, 4, 5, 6], time: kind === "stop" ? "23:00" : "09:00", end_time: kind === "restriction" ? "18:00" : null }] }));
   }
   async function save(event) {
     event.preventDefault();

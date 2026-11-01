@@ -11,7 +11,7 @@ from pathlib import Path
 
 import aiosqlite
 from fastapi import APIRouter, Depends, Header, Request, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 AUTH_DATABASE = Path(os.getenv("MARCHITECT_AUTH_DB", "/data/marchitect.sqlite3"))
@@ -64,6 +64,14 @@ class AdminCodeChange(BaseModel):
     current_code: str = Field(min_length=1, max_length=200)
     new_code: str = Field(min_length=8, max_length=200)
     confirmation: str = Field(min_length=8, max_length=200)
+
+    @field_validator("new_code", "confirmation")
+    @classmethod
+    def validate_code(cls, value):
+        value = value.strip()
+        if len(value) < 8:
+            raise ValueError("공백을 제외한 접근 코드는 8자 이상이어야 합니다.")
+        return value
 
 
 def code_hash(code: str) -> str:
